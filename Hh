@@ -142,7 +142,6 @@ local SilentFOVRadius = 300
 local SilentFOVColor = Color3.fromRGB(255, 255, 255)
 local SilentMaxDistance = 500
 local activeTargetPos = nil
-local currentSilentTarget = nil
 
 local KatanaFlashEnabled = false
 local EscudoEnabled = false
@@ -161,15 +160,15 @@ local RageMode = "GUN"
 local KillSayEnabled = false
 local lastKillSayTick = 0
 local CustomKillPhrases = {
-    "APOCALYPSE HUB ON TOP ðŸ‘‘",
+    "APOCALYPSE HUB ON TOP",
     "EZ FOR APOCALYPSE",
     "TOTAL DOMINATION // APOCALYPSE",
     "GET GOOD, GET APOCALYPSE",
-    "MÃS RAPIDO QUE TU SILENT AIM",
-    "DESTRUIDO POR APOCALYPSE HUB ðŸ’€",
+    "MAS RAPIDO QUE TU SILENT AIM",
+    "DESTRUIDO POR APOCALYPSE HUB",
     "NI CON 100 FPS ME GANAS",
     "LIMPIANDO EL SERVER FACILMENTE",
-    "LLORA MÃS FUERTE EN EL CHAT ðŸ¼",
+    "LLORA MAS FUERTE EN EL CHAT",
     "NO HAY WALLCHECK QUE TE SALVE",
     "APOCALYPSE.LOL DOMINANDO ESTE JUEGO",
     "FUTURA LEYENDA DEL RAGEBOT",
@@ -177,10 +176,10 @@ local CustomKillPhrases = {
     "METETE A OTRA PARTIDA, AQUI NO SIRVES",
     "TU AIMBOT ES DE JUGUETE AL LADO MIO",
     "SIGUE INTENTANDO DARME HEADSHOT",
-    "EL REY DEL PREDICTION LLEGUÃ‰ YO",
-    "10-0 Y SIN ESFUERZO, MUÃ‰RETE",
+    "EL REY DEL PREDICTION LLEGUE YO",
+    "10-0 Y SIN ESFUERZO",
     "APOCALYPSE V3 NO CONOCE RIVALES",
-    "GG EZ, COMPRATE MANOS NUEVAS"
+    "GG EZ"
 }
 
 local soundConnections = {}
@@ -320,9 +319,8 @@ getgenv().BrightnessBoostActive = false
 getgenv().OutdoorAmbientBoostActive = false
 getgenv().FreezeTimeActive = false
 getgenv().FrozenClockVal = 12
-
--- NUEVO: FunciÃ³n Minecraft Textures
 getgenv().MinecraftTexturesActive = false
+
 LeftVisualsGroup:AddToggle("MinecraftTexturesToggle", {
     Text = "Minecraft Textures (Blocks)", Default = false,
     Callback = function(v)
@@ -403,7 +401,7 @@ LeftVisualsGroup:AddToggle("PlasticMaterialsToggle", {
     end
 })
 LeftVisualsGroup:AddToggle("CustomFOVCameraToggle", {Text = "Custom Camera FOV Enabled", Default = false, Callback = function(v) getgenv().CustomCamFOVActive = v end})
-LeftVisualsGroup:AddSlider("CameraFOVSlider", {Text = "Camera Field of View", Default = 70, Min = 40, Max = 120, Rounding = 0, Suffix = "Â°", Callback = function(v) getgenv().CamFOVVal = v end})
+LeftVisualsGroup:AddSlider("CameraFOVSlider", {Text = "Camera Field of View", Default = 70, Min = 40, Max = 120, Rounding = 0, Suffix = "°", Callback = function(v) getgenv().CamFOVVal = v end})
 LeftVisualsGroup:AddToggle("NoCameraShakeToggle", {Text = "Disable Camera Shaking", Default = false, Callback = function(v) getgenv().NoCamShakeActive = v end})
 LeftVisualsGroup:AddToggle("WaterTransparencyToggle", {
     Text = "Transparent Terrain Water", Default = false,
@@ -545,26 +543,214 @@ RightVisualsGroup:AddToggle("FreezeTimeToggle", {
     end
 })
 
+RightVisualsGroup:AddButton("Unlock All (Skins/Items)", function()
+    pcall(function()
+        local Players = game:GetService("Players")
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local HttpService = game:GetService("HttpService")
+        local player = Players.LocalPlayer
+        local playerScripts = player.PlayerScripts
+        local controllers = playerScripts.Controllers
+
+        local EnumLibrary = require(ReplicatedStorage.Modules:WaitForChild("EnumLibrary", 10))
+        if EnumLibrary then EnumLibrary:WaitForEnumBuilder() end
+        local CosmeticLibrary = require(ReplicatedStorage.Modules:WaitForChild("CosmeticLibrary", 10))
+        local ItemLibrary = require(ReplicatedStorage.Modules:WaitForChild("ItemLibrary", 10))
+        local DataController = require(controllers:WaitForChild("PlayerDataController", 10))
+
+        local equipped, favorites = {}, {}
+        local constructingWeapon, viewingProfile = nil, nil
+
+        local function cloneCosmetic(name, cosmeticType, options)
+            local base = CosmeticLibrary.Cosmetics[name]
+            if not base then return nil end
+            local data = {}
+            for key, value in pairs(base) do data[key] = value end
+            data.Name = name
+            data.Type = data.Type or cosmeticType
+            data.Seed = data.Seed or math.random(1, 1000000)
+            if EnumLibrary then
+                local success, enumId = pcall(EnumLibrary.ToEnum, EnumLibrary, name)
+                if success and enumId then data.Enum, data.ObjectID = enumId, data.ObjectID or enumId end
+            end
+            if options then
+                if options.inverted ~= nil then data.Inverted = options.inverted end
+                if options.favoritesOnly ~= nil then data.OnlyUseFavorites = options.favoritesOnly end
+            end
+            return data
+        end
+
+        local saveFile = "unlockall/config.json"
+        local function saveConfig()
+            if not writefile then return end
+            pcall(function()
+                local config = {equipped = {}, favorites = favorites}
+                for weapon, cosmetics in pairs(equipped) do
+                    config.equipped[weapon] = {}
+                    for cosmeticType, cosmeticData in pairs(cosmetics) do
+                        if cosmeticData and cosmeticData.Name then
+                            config.equipped[weapon][cosmeticType] = {
+                                name = cosmeticData.Name, seed = cosmeticData.Seed, inverted = cosmeticData.Inverted
+                            }
+                        end
+                    end
+                end
+                makefolder("unlockall")
+                writefile(saveFile, HttpService:JSONEncode(config))
+            end)
+        end
+
+        local function loadConfig()
+            if not readfile or not isfile or not isfile(saveFile) then return end
+            pcall(function()
+                local config = HttpService:JSONDecode(readfile(saveFile))
+                if config.equipped then
+                    for weapon, cosmetics in pairs(config.equipped) do
+                        equipped[weapon] = {}
+                        for cosmeticType, cosmeticData in pairs(cosmetics) do
+                            local cloned = cloneCosmetic(cosmeticData.name, cosmeticType, {inverted = cosmeticData.inverted})
+                            if cloned then cloned.Seed = cosmeticData.seed equipped[weapon][cosmeticType] = cloned end
+                        end
+                    end
+                end
+                favorites = config.favorites or {}
+            end)
+        end
+
+        CosmeticLibrary.OwnsCosmeticNormally = function(self, inventory, name, weapon)
+            local cosmetic = CosmeticLibrary.Cosmetics[name]
+            if cosmetic and cosmetic.Type == "Skin" then return true end
+            return false
+        end
+        CosmeticLibrary.OwnsCosmeticUniversally = function(self, inventory, name, weapon)
+            local cosmetic = CosmeticLibrary.Cosmetics[name]
+            if cosmetic and cosmetic.Type == "Skin" then return true end
+            return false
+        end
+        CosmeticLibrary.OwnsCosmeticForWeapon = function(self, inventory, name, weapon)
+            local cosmetic = CosmeticLibrary.Cosmetics[name]
+            if cosmetic and cosmetic.Type == "Skin" then return true end
+            return false
+        end
+
+        local originalOwnsCosmetic = CosmeticLibrary.OwnsCosmetic
+        CosmeticLibrary.OwnsCosmetic = function(self, inventory, name, weapon)
+            if name:find("MISSING_") then return originalOwnsCosmetic(self, inventory, name, weapon) end
+            local cosmetic = CosmeticLibrary.Cosmetics[name]
+            if cosmetic and (cosmetic.Type == "Skin" or cosmetic.Type == "Charm" or cosmetic.Type == "Dance" or cosmetic.Type == "Emote" or cosmetic.Type == "Wrap" or cosmetic.Type == "Wrapping" or cosmetic.Type == "Finisher" or name:lower():find("charm") or name:lower():find("dance") or name:lower():find("emote") or name:lower():find("wrap") or name:lower():find("finisher")) then return true end
+            return originalOwnsCosmetic(self, inventory, name, weapon)
+        end
+
+        local originalGet = DataController.Get
+        DataController.Get = function(self, key)
+            local data = originalGet(self, key)
+            if key == "CosmeticInventory" then
+                local proxy = {}
+                if data then for k, v in pairs(data) do proxy[k] = v end end
+                return setmetatable(proxy, {__index = function(t, k)
+                    local cosmetic = CosmeticLibrary.Cosmetics[k]
+                    if cosmetic then return true end
+                    return nil
+                end})
+            end
+            if key == "FavoritedCosmetics" then
+                local result = data and table.clone(data) or {}
+                for weapon, favs in pairs(favorites) do
+                    result[weapon] = result[weapon] or {}
+                    for name, isFav in pairs(favs) do result[weapon][name] = isFav end
+                end
+                return result
+            end
+            return data
+        end
+
+        local originalGetWeaponData = DataController.GetWeaponData
+        DataController.GetWeaponData = function(self, weaponName)
+            local data = originalGetWeaponData(self, weaponName)
+            if not data then return nil end
+            local merged = {}
+            for key, value in pairs(data) do merged[key] = value end
+            merged.Name = weaponName
+            if equipped[weaponName] then
+                for cosmeticType, cosmeticData in pairs(equipped[weaponName]) do
+                    merged[cosmeticType] = cosmeticData
+                end
+            end
+            return merged
+        end
+
+        if hookmetamethod then
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            local dataRemotes = remotes and remotes:FindFirstChild("Data")
+            local equipRemote = dataRemotes and dataRemotes:FindFirstChild("EquipCosmetic")
+            local favoriteRemote = dataRemotes and dataRemotes:FindFirstChild("FavoriteCosmetic")
+
+            if equipRemote then
+                local oldNamecall
+                oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+                    if getnamecallmethod() ~= "FireServer" then return oldNamecall(self, ...) end
+                    local args = {...}
+                    if self == equipRemote then
+                        local weaponName, cosmeticType, cosmeticName, options = args[1], args[2], args[3], args[4] or {}
+                        equipped[weaponName] = equipped[weaponName] or {}
+                        if not cosmeticName or cosmeticName == "None" or cosmeticName == "" then
+                            equipped[weaponName][cosmeticType] = nil
+                            if not next(equipped[weaponName]) then equipped[weaponName] = nil end
+                        else
+                            local cloned = cloneCosmetic(cosmeticName, cosmeticType, {inverted = options.IsInverted, favoritesOnly = options.OnlyUseFavorites})
+                            if cloned then equipped[weaponName][cosmeticType] = cloned end
+                        end
+                        task.defer(function()
+                            pcall(function() DataController.CurrentData:Replicate("WeaponInventory") end)
+                            task.wait(0.2)
+                            saveConfig()
+                        end)
+                        return
+                    end
+                    if self == favoriteRemote then
+                        favorites[args[1]] = favorites[args[1]] or {}
+                        favorites[args[1]][args[2]] = args[3] or nil
+                        saveConfig()
+                        task.spawn(function() pcall(function() DataController.CurrentData:Replicate("FavoritedCosmetics") end) end)
+                        return
+                    end
+                    return oldNamecall(self, ...)
+                end)
+            end
+        end
+
+        pcall(function()
+            local EmoteController = require(controllers:WaitForChild("EmoteController", 10))
+            if EmoteController and EmoteController.GetEmotes then
+                local originalGetEmotes = EmoteController.GetEmotes
+                EmoteController.GetEmotes = function(self)
+                    local emotes = originalGetEmotes(self)
+                    for name, cosmetic in pairs(CosmeticLibrary.Cosmetics) do
+                        if cosmetic and (cosmetic.Type == "Dance" or cosmetic.Type == "Emote" or name:lower():find("dance") or name:lower():find("emote")) then
+                            if not emotes[name] then
+                                emotes[name] = {
+                                    Name = name,
+                                    Type = cosmetic.Type,
+                                    ObjectID = cosmetic.ObjectID,
+                                    Enum = cosmetic.Enum
+                                }
+                            end
+                        end
+                    end
+                    return emotes
+                end
+            end
+        end)
+
+        loadConfig()
+        Library:Notify("Unlock All completo aplicado", 5)
+    end)
+end)
+
 local LeftMiscGroup = Tabs.MISC:AddLeftGroupbox("Device Spoofer")
 local RightMiscGroup = Tabs.MISC:AddRightGroupbox("Server & Extra Tools")
 local SpinbotGroup = Tabs.MISC:AddLeftGroupbox("Spinbot & Movement")
 local AutoGroup = Tabs.MISC:AddRightGroupbox("Auto Features")
-
--- NUEVO: BotÃ³n Unlock All en MISC
-RightMiscGroup:AddButton("Unlock All (Skins/Items)", function()
-    pcall(function()
-        if getgc then
-            for _, v in pairs(getgc(true)) do
-                if type(v) == "table" then
-                    if rawget(v, "Owned") then v.Owned = true end
-                    if rawget(v, "Unlocked") then v.Unlocked = true end
-                    if rawget(v, "IsOwned") then v.IsOwned = true end
-                end
-            end
-        end
-        Library:Notify("Â¡Unlock All aplicado correctamente!", 3)
-    end)
-end)
 
 LeftMiscGroup:AddToggle("SpoofDeviceToggle", {
     Text = "Enable Device Spoofing", Default = false,
