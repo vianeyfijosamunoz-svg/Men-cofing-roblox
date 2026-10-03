@@ -284,6 +284,24 @@ local FlightSpeed = 60
 local flightBodyVelocity = nil
 local flightBodyGyro = nil
 
+local KillSoundsEnabled = false
+local SelectedKillSound = "CSGO"
+local KillSoundVolume = 1
+
+local KillSoundIds = {
+    ["Neverlose"] = "rbxassetid://9114224527",
+    ["CSGO"] = "rbxassetid://3415635180",
+    ["Among Us"] = "rbxassetid://5153700337",
+    ["Bruh"] = "rbxassetid://6607339540",
+    ["Minecraft"] = "rbxassetid://5158840470",
+    ["Oof"] = "rbxassetid://178452483",
+    ["TF2"] = "rbxassetid://2865227270",
+    ["Valorant"] = "rbxassetid://9113825145",
+    ["Fortnite"] = "rbxassetid://5153700337",
+    ["Anime Hit"] = "rbxassetid://9114224527",
+    ["Headshot Classic"] = "rbxassetid://3415635180"
+}
+
 local LeftESPGroup = Tabs.ESP:AddLeftGroupbox("ESP Visuals (Drawing)")
 local RightESPGroup = Tabs.ESP:AddRightGroupbox("ESP Settings & Filters")
 
@@ -315,6 +333,7 @@ local LeftVisualsGroup = Tabs.Visuals:AddLeftGroupbox("World & Environment")
 local RightVisualsGroup = Tabs.Visuals:AddRightGroupbox("Lighting & Post-Processing")
 local CrosshairGroup = Tabs.Visuals:AddLeftGroupbox("Custom Crosshair")
 local ExtraVisualsGroup = Tabs.Visuals:AddRightGroupbox("Extra Visuals")
+local KillSoundsGroup = Tabs.Visuals:AddLeftGroupbox("Kill Sounds")
 
 local defaultLighting = {
     Brightness = Lighting.Brightness,
@@ -653,6 +672,27 @@ ExtraVisualsGroup:AddToggle("KeybindDisplayToggle", {
     Callback = function(v) KeybindDisplayEnabled = v end
 })
 
+KillSoundsGroup:AddToggle("KillSoundsToggle", {
+    Text = "Enable Kill Sounds",
+    Default = false,
+    Callback = function(v) KillSoundsEnabled = v end
+})
+KillSoundsGroup:AddDropdown("KillSoundDropdown", {
+    Values = {"Neverlose", "CSGO", "Among Us", "Bruh", "Minecraft", "Oof", "TF2", "Valorant", "Fortnite", "Anime Hit", "Headshot Classic"},
+    Default = 2,
+    Multi = false,
+    Text = "Sound",
+    Callback = function(v) SelectedKillSound = v end
+})
+KillSoundsGroup:AddSlider("KillSoundVolumeSlider", {
+    Text = "Volume",
+    Default = 1,
+    Min = 0.1,
+    Max = 2,
+    Rounding = 1,
+    Callback = function(v) KillSoundVolume = v end
+})
+
 local LeftMiscGroup = Tabs.MISC:AddLeftGroupbox("Device Spoofer")
 local RightMiscGroup = Tabs.MISC:AddRightGroupbox("Server & Extra Tools")
 local SpinbotGroup = Tabs.MISC:AddLeftGroupbox("Spinbot & Movement")
@@ -868,15 +908,35 @@ Players.PlayerAdded:Connect(initESP)
 Players.PlayerRemoving:Connect(removeESP)
 for _, p in ipairs(Players:GetPlayers()) do initESP(p) end
 
+local function PlayKillSound()
+    if not KillSoundsEnabled then return end
+    local soundId = KillSoundIds[SelectedKillSound]
+    if not soundId then return end
+    local sound = Instance.new("Sound")
+    sound.SoundId = soundId
+    sound.Volume = KillSoundVolume
+    sound.PlayOnRemove = false
+    sound.Parent = SoundService
+    sound:Play()
+    sound.Ended:Connect(function()
+        sound:Destroy()
+    end)
+    task.delay(3, function()
+        if sound and sound.Parent then
+            sound:Destroy()
+        end
+    end)
+end
+
 local function SpawnDamageNumber(position, damage)
     if not DamageNumbersEnabled then return end
+    PlayKillSound()
     local billboard = Instance.new("BillboardGui")
     billboard.Size = UDim2.new(0, 100, 0, 40)
     billboard.StudsOffset = Vector3.new(math.random(-2, 2), 3, math.random(-2, 2))
     billboard.AlwaysOnTop = true
     billboard.Adornee = nil
     billboard.Parent = CoreGui
-
     local part = Instance.new("Part")
     part.Anchored = true
     part.CanCollide = false
@@ -885,7 +945,6 @@ local function SpawnDamageNumber(position, damage)
     part.Position = position
     part.Parent = workspace
     billboard.Adornee = part
-
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, 0, 1, 0)
     label.BackgroundTransparency = 1
@@ -896,9 +955,7 @@ local function SpawnDamageNumber(position, damage)
     label.Font = Enum.Font.GothamBold
     label.TextSize = 22
     label.Parent = billboard
-
     table.insert(damageNumbers, {gui = billboard, part = part, start = tick()})
-
     task.delay(1.2, function()
         pcall(function()
             billboard:Destroy()
@@ -1103,7 +1160,6 @@ local function PlayKillEffect(killedName)
     flash.BorderSizePixel = 0
     flash.ZIndex = 100
     flash.Parent = CoreGui
-
     local text = Instance.new("TextLabel")
     text.Size = UDim2.new(0, 500, 0, 60)
     text.Position = UDim2.new(0.5, -250, 0.35, 0)
@@ -1116,7 +1172,6 @@ local function PlayKillEffect(killedName)
     text.TextSize = 32
     text.ZIndex = 101
     text.Parent = flash
-
     TweenService:Create(flash, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
     TweenService:Create(text, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
     task.delay(0.7, function()
@@ -1273,13 +1328,11 @@ local function UpdateCrosshair()
     local size = CrosshairSize
     local gap = CrosshairGap
     local thick = CrosshairThickness
-
     for _, line in pairs(Crosshair) do
         line.Visible = CrosshairEnabled
         line.Thickness = thick
         line.Color = CrosshairColor
     end
-
     Crosshair.Top.From = center - Vector2.new(0, gap)
     Crosshair.Top.To = center - Vector2.new(0, gap + size)
     Crosshair.Bottom.From = center + Vector2.new(0, gap)
@@ -1288,7 +1341,6 @@ local function UpdateCrosshair()
     Crosshair.Left.To = center - Vector2.new(gap + size, 0)
     Crosshair.Right.From = center + Vector2.new(gap, 0)
     Crosshair.Right.To = center + Vector2.new(gap + size, 0)
-
     if CrosshairOutline then
         Crosshair.OutlineTop.Visible = CrosshairEnabled
         Crosshair.OutlineBottom.Visible = CrosshairEnabled
@@ -1326,26 +1378,20 @@ local function UpdateRadar()
         for _, dot in pairs(radarDots) do dot.Visible = false end
         return
     end
-
     local center = RadarPosition + Vector2.new(RadarSize / 2, RadarSize / 2)
     RadarBG.Position = center
     RadarBG.Radius = RadarSize / 2
     RadarBG.Visible = true
-
     RadarBorder.Position = center
     RadarBorder.Radius = RadarSize / 2
     RadarBorder.Visible = true
-
     RadarCenter.Position = center
     RadarCenter.Visible = true
-
     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not myRoot then return end
-
     local myPos = myRoot.Position
     local myLook = Camera.CFrame.LookVector
     local angle = math.atan2(myLook.X, myLook.Z)
-
     local idx = 1
     for _, plr in ipairs(Players:GetPlayers()) do
         if isTargetValid(plr) and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
@@ -1358,7 +1404,6 @@ local function UpdateRadar()
                 local scale = (RadarSize / 2) / RadarRange
                 local screenX = center.X + relX * scale
                 local screenY = center.Y + relZ * scale
-
                 if not radarDots[idx] then
                     radarDots[idx] = Drawing.new("Circle")
                     radarDots[idx].Filled = true
@@ -1382,55 +1427,44 @@ local function UpdateTargetHUD()
         for _, v in pairs(TargetHUD) do v.Visible = false end
         return
     end
-
     local char = CurrentTarget.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not hum then
         for _, v in pairs(TargetHUD) do v.Visible = false end
         return
     end
-
     local health = math.floor(hum.Health)
     local maxHealth = math.floor(hum.MaxHealth)
     local kills = GetPlayerStat(CurrentTarget, {"Kills", "Kill", "kills"})
     local streak = GetPlayerStat(CurrentTarget, {"Streak", "KillStreak", "streak", "Racha"})
     local level = GetPlayerStat(CurrentTarget, {"Level", "level", "Lvl"})
-
     local hudX = Camera.ViewportSize.X - 260
     local hudY = 80
     local hudW = 240
     local hudH = 110
-
     TargetHUD.Background.Position = Vector2.new(hudX, hudY)
     TargetHUD.Background.Size = Vector2.new(hudW, hudH)
     TargetHUD.Background.Visible = true
-
     TargetHUD.Name.Text = StreamerModeEnabled and "Player" or CurrentTarget.Name
     TargetHUD.Name.Position = Vector2.new(hudX + 12, hudY + 8)
     TargetHUD.Name.Visible = true
-
     TargetHUD.Health.Text = "HP: " .. health .. " / " .. maxHealth
     TargetHUD.Health.Position = Vector2.new(hudX + 12, hudY + 32)
     TargetHUD.Health.Visible = true
-
     TargetHUD.Kills.Text = "Kills: " .. kills
     TargetHUD.Kills.Position = Vector2.new(hudX + 12, hudY + 52)
     TargetHUD.Kills.Visible = true
-
     TargetHUD.Streak.Text = "Racha: " .. streak
     TargetHUD.Streak.Position = Vector2.new(hudX + 120, hudY + 52)
     TargetHUD.Streak.Visible = true
-
     TargetHUD.Level.Text = "Nivel: " .. level
     TargetHUD.Level.Position = Vector2.new(hudX + 12, hudY + 72)
     TargetHUD.Level.Visible = true
-
     local barW = hudW - 24
     local healthPct = math.clamp(health / maxHealth, 0, 1)
     TargetHUD.HealthBarBG.Position = Vector2.new(hudX + 12, hudY + 94)
     TargetHUD.HealthBarBG.Size = Vector2.new(barW, 8)
     TargetHUD.HealthBarBG.Visible = true
-
     TargetHUD.HealthBar.Position = Vector2.new(hudX + 12, hudY + 94)
     TargetHUD.HealthBar.Size = Vector2.new(barW * healthPct, 8)
     TargetHUD.HealthBar.Color = Color3.fromHSV(healthPct * 0.3, 1, 1)
@@ -1501,10 +1535,8 @@ local function StartFreecam()
     originalCameraType = Camera.CameraType
     originalCameraSubject = Camera.CameraSubject
     Camera.CameraType = Enum.CameraType.Scriptable
-
     local camPos = Camera.CFrame.Position
     local camRot = Camera.CFrame
-
     freecamConn = RunService.RenderStepped:Connect(function(dt)
         if not isFreecamActive then return end
         local move = Vector3.zero
@@ -1514,11 +1546,9 @@ local function StartFreecam()
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + camRot.RightVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.E) then move = move + Vector3.new(0, 1, 0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.Q) then move = move - Vector3.new(0, 1, 0) end
-
         if move.Magnitude > 0 then
             camPos = camPos + move.Unit * FreecamSpeed * dt
         end
-
         local mouseDelta = UserInputService:GetMouseDelta()
         local yaw = -mouseDelta.X * 0.003
         local pitch = -mouseDelta.Y * 0.003
@@ -1569,7 +1599,6 @@ RunService.RenderStepped:Connect(function()
         local bestHead = nil
         local shortestDist = 9e9
         local screenCenter = Camera.ViewportSize / 2
-
         for _, plr in pairs(Players:GetPlayers()) do
             local char = plr.Character
             if char and isTargetValid(plr) then
@@ -1579,7 +1608,6 @@ RunService.RenderStepped:Connect(function()
                     local distFromMe = (predicted - Camera.CFrame.Position).Magnitude
                     local headPos, headOnScreen = Camera:WorldToViewportPoint(predicted)
                     local fovDist = (Vector2.new(headPos.X, headPos.Y) - screenCenter).Magnitude
-
                     if headOnScreen and distFromMe <= SilentMaxDistance and fovDist <= SilentFOVRadius then
                         if fovDist < shortestDist then
                             if SilentWallCheck then
@@ -1646,7 +1674,6 @@ RunService.RenderStepped:Connect(function()
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChildOfClass("Humanoid")
             local head = char and char:FindFirstChild("Head")
-
             local function hideAll()
                 if visuals then
                     for k, d in pairs(visuals) do
@@ -1658,7 +1685,6 @@ RunService.RenderStepped:Connect(function()
                     end
                 end
             end
-
             if not char or not hrp or not hum or hum.Health <= 0 then hideAll()
             else
                 local isEnemy = true
@@ -1676,20 +1702,17 @@ RunService.RenderStepped:Connect(function()
                     else
                         local size = Vector2.new(2000 / pos.Z, 3000 / pos.Z)
                         local boxPos = Vector2.new(pos.X - size.X / 2, pos.Y - size.Y / 2)
-
                         if ESPConfig.BoxEnabled then
                             visuals.Box.Visible = true
                             visuals.Box.Size = size
                             visuals.Box.Position = boxPos
                             visuals.Box.Outline = ESPConfig.BoxOutlineEnabled
                         else visuals.Box.Visible = false end
-
                         if ESPConfig.FilledBoxEnabled and ESPConfig.BoxEnabled then
                             visuals.BoxFill.Visible = true
                             visuals.BoxFill.Size = size
                             visuals.BoxFill.Position = boxPos
                         else visuals.BoxFill.Visible = false end
-
                         if ESPConfig.CornerBoxEnabled then
                             local c = visuals.Corner
                             local len = math.min(size.X, size.Y) * 0.25
@@ -1704,7 +1727,6 @@ RunService.RenderStepped:Connect(function()
                         else
                             for _, line in pairs(visuals.Corner) do line.Visible = false end
                         end
-
                         if ESPConfig.NameEnabled then
                             visuals.Name.Visible = true
                             visuals.Name.Text = StreamerModeEnabled and "Player" or player.Name
@@ -1712,7 +1734,6 @@ RunService.RenderStepped:Connect(function()
                             visuals.Name.Outline = ESPConfig.TextOutlineEnabled
                             visuals.Name.Position = Vector2.new(pos.X, boxPos.Y - ESPConfig.TextSize - 4)
                         else visuals.Name.Visible = false end
-
                         if ESPConfig.PingEnabled then
                             local ping = 0
                             pcall(function()
@@ -1726,7 +1747,6 @@ RunService.RenderStepped:Connect(function()
                         else
                             visuals.Ping.Visible = false
                         end
-
                         if ESPConfig.FPSEnabled then
                             visuals.FPS.Visible = true
                             visuals.FPS.Text = "FPS: --"
@@ -1736,7 +1756,6 @@ RunService.RenderStepped:Connect(function()
                         else
                             visuals.FPS.Visible = false
                         end
-
                         if ESPConfig.HealthBarEnabled and hum then
                             local healthPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
                             local barHeight = size.Y * healthPct
@@ -1751,21 +1770,18 @@ RunService.RenderStepped:Connect(function()
                             visuals.HealthBar.Visible = false
                             visuals.HealthBarBG.Visible = false
                         end
-
                         if ESPConfig.HealthTextEnabled and hum then
                             visuals.HealthText.Visible = true
                             visuals.HealthText.Size = ESPConfig.TextSize - 2
                             visuals.HealthText.Text = math.floor(hum.Health) .. "HP"
                             visuals.HealthText.Position = Vector2.new(boxPos.X - 22, boxPos.Y + (size.Y / 2))
                         else visuals.HealthText.Visible = false end
-
                         if ESPConfig.DistanceEnabled then
                             visuals.Distance.Visible = true
                             visuals.Distance.Size = ESPConfig.TextSize - 1
                             visuals.Distance.Text = math.floor(dist) .. " studs"
                             visuals.Distance.Position = Vector2.new(pos.X, boxPos.Y + size.Y + 2)
                         else visuals.Distance.Visible = false end
-
                         if ESPConfig.HeadDotEnabled and head then
                             local headPos, headOn = Camera:WorldToViewportPoint(head.Position)
                             if headOn then
@@ -1773,13 +1789,11 @@ RunService.RenderStepped:Connect(function()
                                 visuals.HeadDot.Position = Vector2.new(headPos.X, headPos.Y)
                             else visuals.HeadDot.Visible = false end
                         else visuals.HeadDot.Visible = false end
-
                         if ESPConfig.TracersEnabled then
                             visuals.Tracer.Visible = true
                             visuals.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
                             visuals.Tracer.To = Vector2.new(pos.X, boxPos.Y + size.Y)
                         else visuals.Tracer.Visible = false end
-
                         if ESPConfig.ViewAngleEnabled and head then
                             local lookVector = head.CFrame.LookVector
                             local endPoint = head.Position + (lookVector * 5)
@@ -1791,7 +1805,6 @@ RunService.RenderStepped:Connect(function()
                                 visuals.ViewAngle.To = Vector2.new(p2.X, p2.Y)
                             else visuals.ViewAngle.Visible = false end
                         else visuals.ViewAngle.Visible = false end
-
                         if ESPConfig.SkeletonEnabled then
                             local function getPartPos(name)
                                 local part = char:FindFirstChild(name)
@@ -1807,31 +1820,26 @@ RunService.RenderStepped:Connect(function()
                             local rightArm = getPartPos("RightHand") or getPartPos("Right Arm")
                             local leftLeg = getPartPos("LeftFoot") or getPartPos("Left Leg")
                             local rightLeg = getPartPos("RightFoot") or getPartPos("Right Leg")
-
                             if headPos and torsoPos then
                                 visuals.Skeleton.Head.Visible = true
                                 visuals.Skeleton.Head.From = headPos
                                 visuals.Skeleton.Head.To = torsoPos
                             else visuals.Skeleton.Head.Visible = false end
-
                             if torsoPos and leftArm then
                                 visuals.Skeleton.LeftArm.Visible = true
                                 visuals.Skeleton.LeftArm.From = torsoPos
                                 visuals.Skeleton.LeftArm.To = leftArm
                             else visuals.Skeleton.LeftArm.Visible = false end
-
                             if torsoPos and rightArm then
                                 visuals.Skeleton.RightArm.Visible = true
                                 visuals.Skeleton.RightArm.From = torsoPos
                                 visuals.Skeleton.RightArm.To = rightArm
                             else visuals.Skeleton.RightArm.Visible = false end
-
                             if torsoPos and leftLeg then
                                 visuals.Skeleton.LeftLeg.Visible = true
                                 visuals.Skeleton.LeftLeg.From = torsoPos
                                 visuals.Skeleton.LeftLeg.To = leftLeg
                             else visuals.Skeleton.LeftLeg.Visible = false end
-
                             if torsoPos and rightLeg then
                                 visuals.Skeleton.RightLeg.Visible = true
                                 visuals.Skeleton.RightLeg.From = torsoPos
@@ -2083,7 +2091,6 @@ RunService.RenderStepped:Connect(function(dt)
         RunInstantAutoShot()
         local target = GetClosestTargetPlayer()
         CurrentTarget = target
-
         local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if myRoot then
             if target and isTargetValid(target) and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
@@ -2092,7 +2099,6 @@ RunService.RenderStepped:Connect(function(dt)
                 local optimalHitbox = tChar:FindFirstChild("Head") or tHrp
                 local predictedPos = GetPredictedPosition(optimalHitbox)
                 local predictedCFrame = CFrame.new(predictedPos)
-
                 if RageMode == "GUN" then
                     local behindCFrame = predictedCFrame * CFrame.new(0, 0, 2)
                     ApplyFakePosition(myRoot, behindCFrame)
@@ -2120,7 +2126,6 @@ RunService.RenderStepped:Connect(function(dt)
         local hrp = LocalPlayer.Character.HumanoidRootPart
         local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
         if hum then hum.PlatformStand = true end
-
         if not flightBodyVelocity or not flightBodyVelocity.Parent then
             flightBodyVelocity = Instance.new("BodyVelocity")
             flightBodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
@@ -2133,7 +2138,6 @@ RunService.RenderStepped:Connect(function(dt)
             flightBodyGyro.P = 9e4
             flightBodyGyro.Parent = hrp
         end
-
         local move = Vector3.zero
         local camCF = Camera.CFrame
         if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + camCF.LookVector end
@@ -2142,7 +2146,6 @@ RunService.RenderStepped:Connect(function(dt)
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + camCF.RightVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, 1, 0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move = move - Vector3.new(0, 1, 0) end
-
         if move.Magnitude > 0 then
             flightBodyVelocity.Velocity = move.Unit * FlightSpeed
         else
@@ -2165,15 +2168,12 @@ RunService.Heartbeat:Connect(function()
     local hum = char:FindFirstChildOfClass("Humanoid")
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hum or not hrp then return end
-
     if getgenv().UndergroundEnabled then
         hrp.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 5, hrp.Position.Z)
     end
-
     if getgenv().HipHeightEnabled then
         hum.HipHeight = getgenv().HipHeightValue
     end
-
     if getgenv().CharTransparencyEnabled then
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
@@ -2183,7 +2183,6 @@ RunService.Heartbeat:Connect(function()
             end
         end
     end
-
     if getgenv().NoCollisionEnabled then
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
@@ -2191,13 +2190,11 @@ RunService.Heartbeat:Connect(function()
             end
         end
     end
-
     if getgenv().GravityEnabled then
         workspace.Gravity = getgenv().GravityValue
     else
         workspace.Gravity = defaultGravity
     end
-
     if getgenv().SpeedBoostEnabled then
         local moveDir = hum.MoveDirection
         if moveDir.Magnitude > 0 then
@@ -2385,4 +2382,4 @@ task.spawn(function()
     end
 end)
 
-Library:Notify("APOCALYPSE HUB | Damage Numbers + Streamer Mode + Keybinds + Flight Loaded", 5)
+Library:Notify("APOCALYPSE HUB | Full Features Loaded", 5)
