@@ -53,6 +53,7 @@ local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
+local TweenService = game:GetService("TweenService")
 
 local states = {
     spoofer_state = {
@@ -142,6 +143,8 @@ local SilentFOVRadius = 300
 local SilentFOVColor = Color3.fromRGB(255, 255, 255)
 local SilentMaxDistance = 500
 local activeTargetPos = nil
+local PredictionEnabled = true
+local PredictionAmount = 0.165
 
 local KatanaFlashEnabled = false
 local EscudoEnabled = false
@@ -245,8 +248,32 @@ local ESPConfig = {
     TeamCheck = true,
     VisibleOnly = false,
     MaxDistance = 1500,
-    TextSize = 13
+    TextSize = 13,
+    PingEnabled = true,
+    FPSEnabled = true
 }
+
+local CrosshairEnabled = false
+local CrosshairSize = 8
+local CrosshairThickness = 1.5
+local CrosshairGap = 4
+local CrosshairColor = Color3.fromRGB(0, 255, 128)
+local CrosshairOutline = true
+
+local RadarEnabled = false
+local RadarSize = 120
+local RadarRange = 200
+local RadarPosition = Vector2.new(20, 20)
+
+local KillEffectsEnabled = false
+local FreecamEnabled = false
+local FreecamSpeed = 50
+local isFreecamActive = false
+local freecamConn = nil
+local originalCameraType = nil
+local originalCameraSubject = nil
+
+local CurrentTarget = nil
 
 local LeftESPGroup = Tabs.ESP:AddLeftGroupbox("ESP Visuals (Drawing)")
 local RightESPGroup = Tabs.ESP:AddRightGroupbox("ESP Settings & Filters")
@@ -261,6 +288,8 @@ LeftESPGroup:AddToggle("ESPSkeleton", {Text = "Skeleton ESP", Default = false, C
 LeftESPGroup:AddToggle("ESPHeadDot", {Text = "Head Dot ESP", Default = false, Callback = function(v) ESPConfig.HeadDotEnabled = v end})
 LeftESPGroup:AddToggle("ESPTracers", {Text = "Snaplines / Tracers", Default = false, Callback = function(v) ESPConfig.TracersEnabled = v end})
 LeftESPGroup:AddToggle("ESPOffscreen", {Text = "Offscreen Arrows", Default = false, Callback = function(v) ESPConfig.OffscreenEnabled = v end})
+LeftESPGroup:AddToggle("ESPPing", {Text = "Ping ESP", Default = true, Callback = function(v) ESPConfig.PingEnabled = v end})
+LeftESPGroup:AddToggle("ESPFPS", {Text = "FPS ESP", Default = true, Callback = function(v) ESPConfig.FPSEnabled = v end})
 
 RightESPGroup:AddToggle("ESPWeapon", {Text = "Weapon ESP", Default = false, Callback = function(v) ESPConfig.WeaponEnabled = v end})
 RightESPGroup:AddToggle("ESPRole", {Text = "Role / Info ESP", Default = false, Callback = function(v) ESPConfig.RoleEnabled = v end})
@@ -275,6 +304,8 @@ RightESPGroup:AddSlider("ESPTextSize", {Text = "Text Font Size", Default = 13, M
 
 local LeftVisualsGroup = Tabs.Visuals:AddLeftGroupbox("World & Environment")
 local RightVisualsGroup = Tabs.Visuals:AddRightGroupbox("Lighting & Post-Processing")
+local CrosshairGroup = Tabs.Visuals:AddLeftGroupbox("Custom Crosshair")
+local ExtraVisualsGroup = Tabs.Visuals:AddRightGroupbox("Extra Visuals")
 
 local defaultLighting = {
     Brightness = Lighting.Brightness,
@@ -543,6 +574,61 @@ RightVisualsGroup:AddToggle("FreezeTimeToggle", {
     end
 })
 
+CrosshairGroup:AddToggle("CrosshairToggle", {
+    Text = "Enable Custom Crosshair",
+    Default = false,
+    Callback = function(v) CrosshairEnabled = v end
+})
+CrosshairGroup:AddSlider("CrosshairSizeSlider", {
+    Text = "Size", Default = 8, Min = 2, Max = 20, Rounding = 0,
+    Callback = function(v) CrosshairSize = v end
+})
+CrosshairGroup:AddSlider("CrosshairThicknessSlider", {
+    Text = "Thickness", Default = 1.5, Min = 1, Max = 4, Rounding = 1,
+    Callback = function(v) CrosshairThickness = v end
+})
+CrosshairGroup:AddSlider("CrosshairGapSlider", {
+    Text = "Gap", Default = 4, Min = 0, Max = 15, Rounding = 0,
+    Callback = function(v) CrosshairGap = v end
+})
+CrosshairGroup:AddToggle("CrosshairOutlineToggle", {
+    Text = "Outline", Default = true,
+    Callback = function(v) CrosshairOutline = v end
+})
+CrosshairGroup:AddLabel("Crosshair Color"):AddColorPicker("CrosshairColorPicker", {
+    Default = Color3.fromRGB(0, 255, 128),
+    Title = "Crosshair Color",
+    Callback = function(v) CrosshairColor = v end
+})
+
+ExtraVisualsGroup:AddToggle("RadarToggle", {
+    Text = "Mini Radar",
+    Default = false,
+    Callback = function(v) RadarEnabled = v end
+})
+ExtraVisualsGroup:AddSlider("RadarSizeSlider", {
+    Text = "Radar Size", Default = 120, Min = 80, Max = 200, Rounding = 0,
+    Callback = function(v) RadarSize = v end
+})
+ExtraVisualsGroup:AddSlider("RadarRangeSlider", {
+    Text = "Radar Range", Default = 200, Min = 50, Max = 500, Rounding = 0, Suffix = " studs",
+    Callback = function(v) RadarRange = v end
+})
+ExtraVisualsGroup:AddToggle("KillEffectsToggle", {
+    Text = "Kill Effects",
+    Default = false,
+    Callback = function(v) KillEffectsEnabled = v end
+})
+ExtraVisualsGroup:AddToggle("FreecamToggle", {
+    Text = "Freecam on Death",
+    Default = false,
+    Callback = function(v) FreecamEnabled = v end
+})
+ExtraVisualsGroup:AddSlider("FreecamSpeedSlider", {
+    Text = "Freecam Speed", Default = 50, Min = 20, Max = 150, Rounding = 0,
+    Callback = function(v) FreecamSpeed = v end
+})
+
 local LeftMiscGroup = Tabs.MISC:AddLeftGroupbox("Device Spoofer")
 local RightMiscGroup = Tabs.MISC:AddRightGroupbox("Server & Extra Tools")
 local SpinbotGroup = Tabs.MISC:AddLeftGroupbox("Spinbot & Movement")
@@ -687,7 +773,13 @@ end
 
 local function removeESP(player)
     if espCache[player] then
-        for _, drawing in pairs(espCache[player]) do pcall(function() drawing:Remove() end) end
+        for _, drawing in pairs(espCache[player]) do
+            if typeof(drawing) == "table" then
+                for _, d in pairs(drawing) do pcall(function() d:Remove() end) end
+            else
+                pcall(function() drawing:Remove() end)
+            end
+        end
         espCache[player] = nil
     end
 end
@@ -705,7 +797,27 @@ local function initESP(player)
         InfoText = createDrawing("Text", {Visible = false, Center = true, Outline = true, Size = 12, Color = Color3.fromRGB(255, 170, 0)}),
         HeadDot = createDrawing("Circle", {Visible = false, Filled = true, Radius = 4, Color = Color3.fromRGB(255, 255, 255)}),
         Tracer = createDrawing("Line", {Visible = false, Thickness = 1, Color = Color3.fromRGB(255, 255, 255)}),
-        ViewAngle = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 50, 50)})
+        ViewAngle = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 50, 50)}),
+        Ping = createDrawing("Text", {Visible = false, Center = true, Outline = true, Size = 12, Color = Color3.fromRGB(0, 255, 255)}),
+        FPS = createDrawing("Text", {Visible = false, Center = true, Outline = true, Size = 12, Color = Color3.fromRGB(255, 200, 0)}),
+        Corner = {
+            TL1 = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)}),
+            TL2 = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)}),
+            TR1 = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)}),
+            TR2 = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)}),
+            BL1 = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)}),
+            BL2 = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)}),
+            BR1 = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)}),
+            BR2 = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)})
+        },
+        Skeleton = {
+            Head = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)}),
+            Torso = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)}),
+            LeftArm = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)}),
+            RightArm = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)}),
+            LeftLeg = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)}),
+            RightLeg = createDrawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(255, 255, 255)})
+        }
     }
 end
 
@@ -811,6 +923,24 @@ local function isTargetValid(plr)
     return true
 end
 
+local function GetPredictedPosition(part)
+    if not PredictionEnabled or not part then return part.Position end
+    local velocity = part.AssemblyLinearVelocity
+    return part.Position + (velocity * PredictionAmount)
+end
+
+local function GetPlayerStat(player, names)
+    for _, name in ipairs(names) do
+        local val = player:GetAttribute(name)
+        if val ~= nil then return val end
+        local ls = player:FindFirstChild("leaderstats")
+        if ls and ls:FindFirstChild(name) then
+            return ls[name].Value
+        end
+    end
+    return 0
+end
+
 local function SendKillSayMessage()
     if not KillSayEnabled then return end
     local hasValidEnemy = false
@@ -836,6 +966,52 @@ local function SendKillSayMessage()
     end
 end
 
+local function PlayKillEffect(killedName)
+    if not KillEffectsEnabled then return end
+    local flash = Instance.new("Frame")
+    flash.Size = UDim2.new(1, 0, 1, 0)
+    flash.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    flash.BackgroundTransparency = 0.4
+    flash.BorderSizePixel = 0
+    flash.ZIndex = 100
+    flash.Parent = game:GetService("CoreGui")
+
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.new(0, 500, 0, 60)
+    text.Position = UDim2.new(0.5, -250, 0.35, 0)
+    text.BackgroundTransparency = 1
+    text.Text = "ELIMINATED  " .. string.upper(killedName)
+    text.TextColor3 = Color3.fromRGB(255, 80, 80)
+    text.TextStrokeTransparency = 0
+    text.TextStrokeColor3 = Color3.new(0, 0, 0)
+    text.Font = Enum.Font.GothamBlack
+    text.TextSize = 32
+    text.ZIndex = 101
+    text.Parent = flash
+
+    TweenService:Create(flash, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(text, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
+    task.delay(0.7, function()
+        flash:Destroy()
+    end)
+end
+
+local lastKnownKills = {}
+local function CheckKills()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local kills = GetPlayerStat(plr, {"Kills", "Kill", "kills"})
+            lastKnownKills[plr] = kills
+        end
+    end
+    local myKills = GetPlayerStat(LocalPlayer, {"Kills", "Kill", "kills"})
+    if lastKnownKills[LocalPlayer] and myKills > lastKnownKills[LocalPlayer] then
+        local targetName = CurrentTarget and CurrentTarget.Name or "ENEMY"
+        PlayKillEffect(targetName)
+    end
+    lastKnownKills[LocalPlayer] = myKills
+end
+
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 1.5
 FOVCircle.NumSides = 64
@@ -857,6 +1033,85 @@ SilentFOVCircle.ZIndex = 999
 SilentFOVCircle.Transparency = 1
 SilentFOVCircle.Color = SilentFOVColor
 SilentFOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+local Crosshair = {
+    Top = Drawing.new("Line"),
+    Bottom = Drawing.new("Line"),
+    Left = Drawing.new("Line"),
+    Right = Drawing.new("Line"),
+    OutlineTop = Drawing.new("Line"),
+    OutlineBottom = Drawing.new("Line"),
+    OutlineLeft = Drawing.new("Line"),
+    OutlineRight = Drawing.new("Line")
+}
+
+for _, line in pairs(Crosshair) do
+    line.Visible = false
+    line.Thickness = 1.5
+    line.Color = Color3.fromRGB(0, 255, 128)
+    line.ZIndex = 999
+end
+
+local RadarBG = Drawing.new("Circle")
+RadarBG.Filled = true
+RadarBG.Color = Color3.fromRGB(20, 20, 20)
+RadarBG.Transparency = 0.35
+RadarBG.Visible = false
+RadarBG.ZIndex = 50
+
+local RadarBorder = Drawing.new("Circle")
+RadarBorder.Filled = false
+RadarBorder.Thickness = 2
+RadarBorder.Color = Color3.fromRGB(0, 255, 128)
+RadarBorder.Visible = false
+RadarBorder.ZIndex = 51
+
+local RadarCenter = Drawing.new("Circle")
+RadarCenter.Filled = true
+RadarCenter.Radius = 3
+RadarCenter.Color = Color3.fromRGB(0, 255, 128)
+RadarCenter.Visible = false
+RadarCenter.ZIndex = 52
+
+local radarDots = {}
+
+local TargetHUD = {
+    Background = Drawing.new("Square"),
+    Name = Drawing.new("Text"),
+    Health = Drawing.new("Text"),
+    Kills = Drawing.new("Text"),
+    Streak = Drawing.new("Text"),
+    Level = Drawing.new("Text"),
+    HealthBarBG = Drawing.new("Square"),
+    HealthBar = Drawing.new("Square")
+}
+
+TargetHUD.Background.Filled = true
+TargetHUD.Background.Color = Color3.fromRGB(15, 15, 15)
+TargetHUD.Background.Transparency = 0.25
+TargetHUD.Background.Visible = false
+TargetHUD.Background.ZIndex = 60
+
+TargetHUD.HealthBarBG.Filled = true
+TargetHUD.HealthBarBG.Color = Color3.fromRGB(40, 40, 40)
+TargetHUD.HealthBarBG.Visible = false
+TargetHUD.HealthBarBG.ZIndex = 61
+
+TargetHUD.HealthBar.Filled = true
+TargetHUD.HealthBar.Color = Color3.fromRGB(0, 255, 100)
+TargetHUD.HealthBar.Visible = false
+TargetHUD.HealthBar.ZIndex = 62
+
+for _, t in pairs({TargetHUD.Name, TargetHUD.Health, TargetHUD.Kills, TargetHUD.Streak, TargetHUD.Level}) do
+    t.Center = false
+    t.Outline = true
+    t.Size = 14
+    t.Color = Color3.fromRGB(255, 255, 255)
+    t.Visible = false
+    t.ZIndex = 63
+end
+TargetHUD.Name.Size = 16
+TargetHUD.Name.Color = Color3.fromRGB(0, 255, 128)
 
 local ScreenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
 local ManipLabel = Instance.new("TextLabel", ScreenGui)
@@ -885,6 +1140,175 @@ local function UpdateFOV()
     SilentFOVCircle.Visible = SilentShowFOV and getgenv().SilentAimEnabled
 end
 
+local function UpdateCrosshair()
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local size = CrosshairSize
+    local gap = CrosshairGap
+    local thick = CrosshairThickness
+
+    for _, line in pairs(Crosshair) do
+        line.Visible = CrosshairEnabled
+        line.Thickness = thick
+        line.Color = CrosshairColor
+    end
+
+    Crosshair.Top.From = center - Vector2.new(0, gap)
+    Crosshair.Top.To = center - Vector2.new(0, gap + size)
+    Crosshair.Bottom.From = center + Vector2.new(0, gap)
+    Crosshair.Bottom.To = center + Vector2.new(0, gap + size)
+    Crosshair.Left.From = center - Vector2.new(gap, 0)
+    Crosshair.Left.To = center - Vector2.new(gap + size, 0)
+    Crosshair.Right.From = center + Vector2.new(gap, 0)
+    Crosshair.Right.To = center + Vector2.new(gap + size, 0)
+
+    if CrosshairOutline then
+        Crosshair.OutlineTop.Visible = CrosshairEnabled
+        Crosshair.OutlineBottom.Visible = CrosshairEnabled
+        Crosshair.OutlineLeft.Visible = CrosshairEnabled
+        Crosshair.OutlineRight.Visible = CrosshairEnabled
+        Crosshair.OutlineTop.Thickness = thick + 1.5
+        Crosshair.OutlineBottom.Thickness = thick + 1.5
+        Crosshair.OutlineLeft.Thickness = thick + 1.5
+        Crosshair.OutlineRight.Thickness = thick + 1.5
+        Crosshair.OutlineTop.Color = Color3.new(0, 0, 0)
+        Crosshair.OutlineBottom.Color = Color3.new(0, 0, 0)
+        Crosshair.OutlineLeft.Color = Color3.new(0, 0, 0)
+        Crosshair.OutlineRight.Color = Color3.new(0, 0, 0)
+        Crosshair.OutlineTop.From = Crosshair.Top.From
+        Crosshair.OutlineTop.To = Crosshair.Top.To
+        Crosshair.OutlineBottom.From = Crosshair.Bottom.From
+        Crosshair.OutlineBottom.To = Crosshair.Bottom.To
+        Crosshair.OutlineLeft.From = Crosshair.Left.From
+        Crosshair.OutlineLeft.To = Crosshair.Left.To
+        Crosshair.OutlineRight.From = Crosshair.Right.From
+        Crosshair.OutlineRight.To = Crosshair.Right.To
+    else
+        Crosshair.OutlineTop.Visible = false
+        Crosshair.OutlineBottom.Visible = false
+        Crosshair.OutlineLeft.Visible = false
+        Crosshair.OutlineRight.Visible = false
+    end
+end
+
+local function UpdateRadar()
+    if not RadarEnabled then
+        RadarBG.Visible = false
+        RadarBorder.Visible = false
+        RadarCenter.Visible = false
+        for _, dot in pairs(radarDots) do dot.Visible = false end
+        return
+    end
+
+    local center = RadarPosition + Vector2.new(RadarSize / 2, RadarSize / 2)
+    RadarBG.Position = center
+    RadarBG.Radius = RadarSize / 2
+    RadarBG.Visible = true
+
+    RadarBorder.Position = center
+    RadarBorder.Radius = RadarSize / 2
+    RadarBorder.Visible = true
+
+    RadarCenter.Position = center
+    RadarCenter.Visible = true
+
+    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return end
+
+    local myPos = myRoot.Position
+    local myLook = Camera.CFrame.LookVector
+    local angle = math.atan2(myLook.X, myLook.Z)
+
+    local idx = 1
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if isTargetValid(plr) and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local enemyPos = plr.Character.HumanoidRootPart.Position
+            local delta = enemyPos - myPos
+            local dist = delta.Magnitude
+            if dist <= RadarRange then
+                local relX = delta.X * math.cos(angle) - delta.Z * math.sin(angle)
+                local relZ = delta.X * math.sin(angle) + delta.Z * math.cos(angle)
+                local scale = (RadarSize / 2) / RadarRange
+                local screenX = center.X + relX * scale
+                local screenY = center.Y + relZ * scale
+
+                if not radarDots[idx] then
+                    radarDots[idx] = Drawing.new("Circle")
+                    radarDots[idx].Filled = true
+                    radarDots[idx].Radius = 4
+                    radarDots[idx].ZIndex = 53
+                end
+                radarDots[idx].Position = Vector2.new(screenX, screenY)
+                radarDots[idx].Color = Color3.fromRGB(255, 60, 60)
+                radarDots[idx].Visible = true
+                idx += 1
+            end
+        end
+    end
+    for i = idx, #radarDots do
+        if radarDots[i] then radarDots[i].Visible = false end
+    end
+end
+
+local function UpdateTargetHUD()
+    if not CurrentTarget or not isTargetValid(CurrentTarget) then
+        for _, v in pairs(TargetHUD) do v.Visible = false end
+        return
+    end
+
+    local char = CurrentTarget.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then
+        for _, v in pairs(TargetHUD) do v.Visible = false end
+        return
+    end
+
+    local health = math.floor(hum.Health)
+    local maxHealth = math.floor(hum.MaxHealth)
+    local kills = GetPlayerStat(CurrentTarget, {"Kills", "Kill", "kills"})
+    local streak = GetPlayerStat(CurrentTarget, {"Streak", "KillStreak", "streak", "Racha"})
+    local level = GetPlayerStat(CurrentTarget, {"Level", "level", "Lvl"})
+
+    local hudX = Camera.ViewportSize.X - 260
+    local hudY = 80
+    local hudW = 240
+    local hudH = 110
+
+    TargetHUD.Background.Position = Vector2.new(hudX, hudY)
+    TargetHUD.Background.Size = Vector2.new(hudW, hudH)
+    TargetHUD.Background.Visible = true
+
+    TargetHUD.Name.Text = CurrentTarget.Name
+    TargetHUD.Name.Position = Vector2.new(hudX + 12, hudY + 8)
+    TargetHUD.Name.Visible = true
+
+    TargetHUD.Health.Text = "HP: " .. health .. " / " .. maxHealth
+    TargetHUD.Health.Position = Vector2.new(hudX + 12, hudY + 32)
+    TargetHUD.Health.Visible = true
+
+    TargetHUD.Kills.Text = "Kills: " .. kills
+    TargetHUD.Kills.Position = Vector2.new(hudX + 12, hudY + 52)
+    TargetHUD.Kills.Visible = true
+
+    TargetHUD.Streak.Text = "Racha: " .. streak
+    TargetHUD.Streak.Position = Vector2.new(hudX + 120, hudY + 52)
+    TargetHUD.Streak.Visible = true
+
+    TargetHUD.Level.Text = "Nivel: " .. level
+    TargetHUD.Level.Position = Vector2.new(hudX + 12, hudY + 72)
+    TargetHUD.Level.Visible = true
+
+    local barW = hudW - 24
+    local healthPct = math.clamp(health / maxHealth, 0, 1)
+    TargetHUD.HealthBarBG.Position = Vector2.new(hudX + 12, hudY + 94)
+    TargetHUD.HealthBarBG.Size = Vector2.new(barW, 8)
+    TargetHUD.HealthBarBG.Visible = true
+
+    TargetHUD.HealthBar.Position = Vector2.new(hudX + 12, hudY + 94)
+    TargetHUD.HealthBar.Size = Vector2.new(barW * healthPct, 8)
+    TargetHUD.HealthBar.Color = Color3.fromHSV(healthPct * 0.3, 1, 1)
+    TargetHUD.HealthBar.Visible = true
+end
+
 local function getValidHead(char)
     local head = char:FindFirstChild("Head")
     if not head then return nil end
@@ -902,12 +1326,13 @@ local function GetClosestPlayerAimbot()
         if isTargetValid(player) and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
             local head = player.Character:FindFirstChild("Head") or player.Character.HumanoidRootPart
             if AimbotWallCheck then local valid = getValidHead(player.Character) if not valid then continue end end
+            local predicted = GetPredictedPosition(head)
             local params = RaycastParams.new()
             params.FilterType = Enum.RaycastFilterType.Exclude
             params.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
-            local result = workspace:Raycast(Camera.CFrame.Position, (head.Position - Camera.CFrame.Position).Unit * 1000, params)
+            local result = workspace:Raycast(Camera.CFrame.Position, (predicted - Camera.CFrame.Position).Unit * 1000, params)
             if result == nil or result.Instance:IsDescendantOf(player.Character) then
-                local pos, onScreen = Camera:WorldToViewportPoint(head.Position)
+                local pos, onScreen = Camera:WorldToViewportPoint(predicted)
                 if onScreen then
                     local distance = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)).Magnitude
                     if distance < shortestDistance then shortestDistance = distance closest = player end
@@ -942,9 +1367,69 @@ local function ApplyFakePosition(myRoot, targetCFrame)
     myRoot.AssemblyAngularVelocity = Vector3.zero
 end
 
+local function StartFreecam()
+    if isFreecamActive then return end
+    isFreecamActive = true
+    originalCameraType = Camera.CameraType
+    originalCameraSubject = Camera.CameraSubject
+    Camera.CameraType = Enum.CameraType.Scriptable
+
+    local camPos = Camera.CFrame.Position
+    local camRot = Camera.CFrame
+
+    freecamConn = RunService.RenderStepped:Connect(function(dt)
+        if not isFreecamActive then return end
+        local move = Vector3.zero
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + camRot.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - camRot.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - camRot.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + camRot.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.E) then move = move + Vector3.new(0, 1, 0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Q) then move = move - Vector3.new(0, 1, 0) end
+
+        if move.Magnitude > 0 then
+            camPos = camPos + move.Unit * FreecamSpeed * dt
+        end
+
+        local mouseDelta = UserInputService:GetMouseDelta()
+        local yaw = -mouseDelta.X * 0.003
+        local pitch = -mouseDelta.Y * 0.003
+        camRot = CFrame.new(camPos) * (camRot - camRot.Position) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
+        Camera.CFrame = camRot
+    end)
+end
+
+local function StopFreecam()
+    if not isFreecamActive then return end
+    isFreecamActive = false
+    if freecamConn then freecamConn:Disconnect() freecamConn = nil end
+    Camera.CameraType = originalCameraType or Enum.CameraType.Custom
+    if originalCameraSubject then Camera.CameraSubject = originalCameraSubject end
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    StopFreecam()
+end)
+
+task.spawn(function()
+    while task.wait(0.3) do
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if FreecamEnabled and hum and hum.Health <= 0 and not isFreecamActive then
+            StartFreecam()
+        elseif (not FreecamEnabled or (hum and hum.Health > 0)) and isFreecamActive then
+            StopFreecam()
+        end
+    end
+end)
+
 RunService.RenderStepped:Connect(function()
     UpdateFOV()
+    UpdateCrosshair()
+    UpdateRadar()
+    UpdateTargetHUD()
     SendKillSayMessage()
+    CheckKills()
 
     if not getgenv().SilentAimEnabled then 
         activeTargetPos = nil
@@ -958,8 +1443,9 @@ RunService.RenderStepped:Connect(function()
             if char and isTargetValid(plr) then
                 local head = char:FindFirstChild("Head")
                 if head then
-                    local distFromMe = (head.Position - Camera.CFrame.Position).Magnitude
-                    local headPos, headOnScreen = Camera:WorldToViewportPoint(head.Position)
+                    local predicted = GetPredictedPosition(head)
+                    local distFromMe = (predicted - Camera.CFrame.Position).Magnitude
+                    local headPos, headOnScreen = Camera:WorldToViewportPoint(predicted)
                     local fovDist = (Vector2.new(headPos.X, headPos.Y) - screenCenter).Magnitude
 
                     if headOnScreen and distFromMe <= SilentMaxDistance and fovDist <= SilentFOVRadius then
@@ -969,17 +1455,23 @@ RunService.RenderStepped:Connect(function()
                                 if valid then 
                                     shortestDist = fovDist
                                     bestHead = valid 
+                                    CurrentTarget = plr
                                 end
                             else
                                 shortestDist = fovDist
                                 bestHead = head
+                                CurrentTarget = plr
                             end
                         end
                     end
                 end
             end
         end
-        activeTargetPos = bestHead and bestHead.Position or nil
+        activeTargetPos = bestHead and GetPredictedPosition(bestHead) or nil
+    end
+
+    if not getgenv().SilentAimEnabled and not AimbotEnabled and not RagebotEnabled then
+        CurrentTarget = GetClosestTargetPlayer()
     end
 
     pcall(function()
@@ -1023,7 +1515,17 @@ RunService.RenderStepped:Connect(function()
             local hum = char and char:FindFirstChildOfClass("Humanoid")
             local head = char and char:FindFirstChild("Head")
 
-            local function hideAll() if visuals then for _, d in pairs(visuals) do d.Visible = false end end end
+            local function hideAll()
+                if visuals then
+                    for k, d in pairs(visuals) do
+                        if typeof(d) == "table" then
+                            for _, line in pairs(d) do line.Visible = false end
+                        else
+                            d.Visible = false
+                        end
+                    end
+                end
+            end
 
             if not char or not hrp or not hum or hum.Health <= 0 then hideAll()
             else
@@ -1042,26 +1544,170 @@ RunService.RenderStepped:Connect(function()
                     else
                         local size = Vector2.new(2000 / pos.Z, 3000 / pos.Z)
                         local boxPos = Vector2.new(pos.X - size.X / 2, pos.Y - size.Y / 2)
-                        if ESPConfig.BoxEnabled then visuals.Box.Visible = true visuals.Box.Size = size visuals.Box.Position = boxPos visuals.Box.Outline = ESPConfig.BoxOutlineEnabled else visuals.Box.Visible = false end
-                        if ESPConfig.FilledBoxEnabled and ESPConfig.BoxEnabled then visuals.BoxFill.Visible = true visuals.BoxFill.Size = size visuals.BoxFill.Position = boxPos else visuals.BoxFill.Visible = false end
-                        if ESPConfig.NameEnabled then visuals.Name.Visible = true visuals.Name.Text = player.Name visuals.Name.Size = ESPConfig.TextSize visuals.Name.Outline = ESPConfig.TextOutlineEnabled visuals.Name.Position = Vector2.new(pos.X, boxPos.Y - ESPConfig.TextSize - 4) else visuals.Name.Visible = false end
+
+                        if ESPConfig.BoxEnabled then
+                            visuals.Box.Visible = true
+                            visuals.Box.Size = size
+                            visuals.Box.Position = boxPos
+                            visuals.Box.Outline = ESPConfig.BoxOutlineEnabled
+                        else visuals.Box.Visible = false end
+
+                        if ESPConfig.FilledBoxEnabled and ESPConfig.BoxEnabled then
+                            visuals.BoxFill.Visible = true
+                            visuals.BoxFill.Size = size
+                            visuals.BoxFill.Position = boxPos
+                        else visuals.BoxFill.Visible = false end
+
+                        if ESPConfig.CornerBoxEnabled then
+                            local c = visuals.Corner
+                            local len = math.min(size.X, size.Y) * 0.25
+                            c.TL1.Visible = true c.TL1.From = boxPos c.TL1.To = boxPos + Vector2.new(len, 0)
+                            c.TL2.Visible = true c.TL2.From = boxPos c.TL2.To = boxPos + Vector2.new(0, len)
+                            c.TR1.Visible = true c.TR1.From = boxPos + Vector2.new(size.X, 0) c.TR1.To = boxPos + Vector2.new(size.X - len, 0)
+                            c.TR2.Visible = true c.TR2.From = boxPos + Vector2.new(size.X, 0) c.TR2.To = boxPos + Vector2.new(size.X, len)
+                            c.BL1.Visible = true c.BL1.From = boxPos + Vector2.new(0, size.Y) c.BL1.To = boxPos + Vector2.new(len, size.Y)
+                            c.BL2.Visible = true c.BL2.From = boxPos + Vector2.new(0, size.Y) c.BL2.To = boxPos + Vector2.new(0, size.Y - len)
+                            c.BR1.Visible = true c.BR1.From = boxPos + Vector2.new(size.X, size.Y) c.BR1.To = boxPos + Vector2.new(size.X - len, size.Y)
+                            c.BR2.Visible = true c.BR2.From = boxPos + Vector2.new(size.X, size.Y) c.BR2.To = boxPos + Vector2.new(size.X, size.Y - len)
+                        else
+                            for _, line in pairs(visuals.Corner) do line.Visible = false end
+                        end
+
+                        if ESPConfig.NameEnabled then
+                            visuals.Name.Visible = true
+                            visuals.Name.Text = player.Name
+                            visuals.Name.Size = ESPConfig.TextSize
+                            visuals.Name.Outline = ESPConfig.TextOutlineEnabled
+                            visuals.Name.Position = Vector2.new(pos.X, boxPos.Y - ESPConfig.TextSize - 4)
+                        else visuals.Name.Visible = false end
+
+                        if ESPConfig.PingEnabled then
+                            local ping = 0
+                            pcall(function()
+                                ping = math.floor(player:GetNetworkPing() * 1000)
+                            end)
+                            visuals.Ping.Visible = true
+                            visuals.Ping.Text = ping .. " ms"
+                            visuals.Ping.Size = ESPConfig.TextSize - 1
+                            visuals.Ping.Outline = ESPConfig.TextOutlineEnabled
+                            visuals.Ping.Position = Vector2.new(pos.X, boxPos.Y - ESPConfig.TextSize - 22)
+                        else
+                            visuals.Ping.Visible = false
+                        end
+
+                        if ESPConfig.FPSEnabled then
+                            visuals.FPS.Visible = true
+                            visuals.FPS.Text = "FPS: --"
+                            visuals.FPS.Size = ESPConfig.TextSize - 1
+                            visuals.FPS.Outline = ESPConfig.TextOutlineEnabled
+                            visuals.FPS.Position = Vector2.new(pos.X, boxPos.Y - ESPConfig.TextSize - 38)
+                        else
+                            visuals.FPS.Visible = false
+                        end
+
                         if ESPConfig.HealthBarEnabled and hum then
                             local healthPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
                             local barHeight = size.Y * healthPct
-                            visuals.HealthBarBG.Visible = true visuals.HealthBarBG.From = Vector2.new(boxPos.X - 6, boxPos.Y + size.Y) visuals.HealthBarBG.To = Vector2.new(boxPos.X - 6, boxPos.Y)
-                            visuals.HealthBar.Visible = true visuals.HealthBar.From = Vector2.new(boxPos.X - 6, boxPos.Y + size.Y) visuals.HealthBar.To = Vector2.new(boxPos.X - 6, boxPos.Y + size.Y - barHeight) visuals.HealthBar.Color = Color3.fromHSV(healthPct * 0.3, 1, 1)
-                        else visuals.HealthBar.Visible = false visuals.HealthBarBG.Visible = false end
-                        if ESPConfig.HealthTextEnabled and hum then visuals.HealthText.Visible = true visuals.HealthText.Size = ESPConfig.TextSize - 2 visuals.HealthText.Text = math.floor(hum.Health) .. "HP" visuals.HealthText.Position = Vector2.new(boxPos.X - 22, boxPos.Y + (size.Y / 2)) else visuals.HealthText.Visible = false end
-                        if ESPConfig.DistanceEnabled then visuals.Distance.Visible = true visuals.Distance.Size = ESPConfig.TextSize - 1 visuals.Distance.Text = math.floor(dist) .. " studs" visuals.Distance.Position = Vector2.new(pos.X, boxPos.Y + size.Y + 2) else visuals.Distance.Visible = false end
-                        if ESPConfig.HeadDotEnabled and head then local headPos, headOn = Camera:WorldToViewportPoint(head.Position) if headOn then visuals.HeadDot.Visible = true visuals.HeadDot.Position = Vector2.new(headPos.X, headPos.Y) else visuals.HeadDot.Visible = false end else visuals.HeadDot.Visible = false end
-                        if ESPConfig.TracersEnabled then visuals.Tracer.Visible = true visuals.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y) visuals.Tracer.To = Vector2.new(pos.X, boxPos.Y + size.Y) else visuals.Tracer.Visible = false end
+                            visuals.HealthBarBG.Visible = true
+                            visuals.HealthBarBG.From = Vector2.new(boxPos.X - 6, boxPos.Y + size.Y)
+                            visuals.HealthBarBG.To = Vector2.new(boxPos.X - 6, boxPos.Y)
+                            visuals.HealthBar.Visible = true
+                            visuals.HealthBar.From = Vector2.new(boxPos.X - 6, boxPos.Y + size.Y)
+                            visuals.HealthBar.To = Vector2.new(boxPos.X - 6, boxPos.Y + size.Y - barHeight)
+                            visuals.HealthBar.Color = Color3.fromHSV(healthPct * 0.3, 1, 1)
+                        else
+                            visuals.HealthBar.Visible = false
+                            visuals.HealthBarBG.Visible = false
+                        end
+
+                        if ESPConfig.HealthTextEnabled and hum then
+                            visuals.HealthText.Visible = true
+                            visuals.HealthText.Size = ESPConfig.TextSize - 2
+                            visuals.HealthText.Text = math.floor(hum.Health) .. "HP"
+                            visuals.HealthText.Position = Vector2.new(boxPos.X - 22, boxPos.Y + (size.Y / 2))
+                        else visuals.HealthText.Visible = false end
+
+                        if ESPConfig.DistanceEnabled then
+                            visuals.Distance.Visible = true
+                            visuals.Distance.Size = ESPConfig.TextSize - 1
+                            visuals.Distance.Text = math.floor(dist) .. " studs"
+                            visuals.Distance.Position = Vector2.new(pos.X, boxPos.Y + size.Y + 2)
+                        else visuals.Distance.Visible = false end
+
+                        if ESPConfig.HeadDotEnabled and head then
+                            local headPos, headOn = Camera:WorldToViewportPoint(head.Position)
+                            if headOn then
+                                visuals.HeadDot.Visible = true
+                                visuals.HeadDot.Position = Vector2.new(headPos.X, headPos.Y)
+                            else visuals.HeadDot.Visible = false end
+                        else visuals.HeadDot.Visible = false end
+
+                        if ESPConfig.TracersEnabled then
+                            visuals.Tracer.Visible = true
+                            visuals.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                            visuals.Tracer.To = Vector2.new(pos.X, boxPos.Y + size.Y)
+                        else visuals.Tracer.Visible = false end
+
                         if ESPConfig.ViewAngleEnabled and head then
                             local lookVector = head.CFrame.LookVector
                             local endPoint = head.Position + (lookVector * 5)
                             local p1, on1 = Camera:WorldToViewportPoint(head.Position)
                             local p2, on2 = Camera:WorldToViewportPoint(endPoint)
-                            if on1 and on2 then visuals.ViewAngle.Visible = true visuals.ViewAngle.From = Vector2.new(p1.X, p1.Y) visuals.ViewAngle.To = Vector2.new(p2.X, p2.Y) else visuals.ViewAngle.Visible = false end
+                            if on1 and on2 then
+                                visuals.ViewAngle.Visible = true
+                                visuals.ViewAngle.From = Vector2.new(p1.X, p1.Y)
+                                visuals.ViewAngle.To = Vector2.new(p2.X, p2.Y)
+                            else visuals.ViewAngle.Visible = false end
                         else visuals.ViewAngle.Visible = false end
+
+                        if ESPConfig.SkeletonEnabled then
+                            local function getPartPos(name)
+                                local part = char:FindFirstChild(name)
+                                if part then
+                                    local p, on = Camera:WorldToViewportPoint(part.Position)
+                                    return on and Vector2.new(p.X, p.Y) or nil
+                                end
+                                return nil
+                            end
+                            local headPos = getPartPos("Head")
+                            local torsoPos = getPartPos("UpperTorso") or getPartPos("Torso")
+                            local leftArm = getPartPos("LeftHand") or getPartPos("Left Arm")
+                            local rightArm = getPartPos("RightHand") or getPartPos("Right Arm")
+                            local leftLeg = getPartPos("LeftFoot") or getPartPos("Left Leg")
+                            local rightLeg = getPartPos("RightFoot") or getPartPos("Right Leg")
+
+                            if headPos and torsoPos then
+                                visuals.Skeleton.Head.Visible = true
+                                visuals.Skeleton.Head.From = headPos
+                                visuals.Skeleton.Head.To = torsoPos
+                            else visuals.Skeleton.Head.Visible = false end
+
+                            if torsoPos and leftArm then
+                                visuals.Skeleton.LeftArm.Visible = true
+                                visuals.Skeleton.LeftArm.From = torsoPos
+                                visuals.Skeleton.LeftArm.To = leftArm
+                            else visuals.Skeleton.LeftArm.Visible = false end
+
+                            if torsoPos and rightArm then
+                                visuals.Skeleton.RightArm.Visible = true
+                                visuals.Skeleton.RightArm.From = torsoPos
+                                visuals.Skeleton.RightArm.To = rightArm
+                            else visuals.Skeleton.RightArm.Visible = false end
+
+                            if torsoPos and leftLeg then
+                                visuals.Skeleton.LeftLeg.Visible = true
+                                visuals.Skeleton.LeftLeg.From = torsoPos
+                                visuals.Skeleton.LeftLeg.To = leftLeg
+                            else visuals.Skeleton.LeftLeg.Visible = false end
+
+                            if torsoPos and rightLeg then
+                                visuals.Skeleton.RightLeg.Visible = true
+                                visuals.Skeleton.RightLeg.From = torsoPos
+                                visuals.Skeleton.RightLeg.To = rightLeg
+                            else visuals.Skeleton.RightLeg.Visible = false end
+                        else
+                            for _, line in pairs(visuals.Skeleton) do line.Visible = false end
+                        end
                     end
                 end
             end
@@ -1165,6 +1811,21 @@ LeftGroupbox:AddToggle("FillFOVToggle", {Text = "FILL FOV", Default = false, Cal
 LeftGroupbox:AddSlider("FOVTransparency", {Text = "TRANSPARENCY FOV", Default = 0, Min = 0, Max = 100, Rounding = 0, Suffix = "%", Callback = function(Value) FOVTransparency = Value UpdateFOV() end})
 LeftGroupbox:AddSlider("FOVRadius", {Text = "FOV RADIUS", Default = 300, Min = 180, Max = 1000, Rounding = 0, Callback = function(Value) FOVRadius = Value UpdateFOV() end})
 
+local PredictionGroup = Tabs.Main:AddLeftGroupbox("Prediction")
+PredictionGroup:AddToggle("PredictionToggle", {
+    Text = "Enable Prediction",
+    Default = true,
+    Callback = function(v) PredictionEnabled = v end
+})
+PredictionGroup:AddSlider("PredictionAmountSlider", {
+    Text = "Prediction Amount",
+    Default = 0.165,
+    Min = 0.05,
+    Max = 0.35,
+    Rounding = 3,
+    Callback = function(v) PredictionAmount = v end
+})
+
 local MeleeRangeGroupbox = Tabs.Main:AddLeftGroupbox("Melee Range")
 MeleeRangeGroupbox:AddToggle("MeleeRangeToggle", {Text = "MELEE RANGE ENABLED", Default = false, Callback = function(Value) MeleeRangeEnabled = Value end})
 MeleeRangeGroupbox:AddSlider("MeleeRangeMultiplierSlider", {Text = "Melee Range Multiplier", Default = 1, Min = 1, Max = 3.5, Rounding = 1, Callback = function(Value) MeleeRangeMultiplier = Value end})
@@ -1259,8 +1920,12 @@ RunService.RenderStepped:Connect(function(dt)
     if AimbotEnabled then
         local target = GetClosestPlayerAimbot()
         if target and isTargetValid(target) and target.Character then
+            CurrentTarget = target
             local head = target.Character:FindFirstChild("Head") or target.Character:FindFirstChild("HumanoidRootPart")
-            if head then Camera.CFrame = CFrame.new(Camera.CFrame.Position, head.Position) end
+            if head then
+                local predicted = GetPredictedPosition(head)
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position, predicted)
+            end
         end
     end
 
@@ -1285,6 +1950,7 @@ RunService.RenderStepped:Connect(function(dt)
     if RagebotEnabled then
         RunInstantAutoShot()
         local target = GetClosestTargetPlayer()
+        CurrentTarget = target
 
         local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if myRoot then
@@ -1292,12 +1958,13 @@ RunService.RenderStepped:Connect(function(dt)
                 local tChar = target.Character
                 local tHrp = tChar.HumanoidRootPart
                 local optimalHitbox = tChar:FindFirstChild("Head") or tHrp
-                local predictedCFrame = tHrp.CFrame
+                local predictedPos = GetPredictedPosition(optimalHitbox)
+                local predictedCFrame = CFrame.new(predictedPos)
 
                 if RageMode == "GUN" then
                     local behindCFrame = predictedCFrame * CFrame.new(0, 0, 2)
                     ApplyFakePosition(myRoot, behindCFrame)
-                    Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, optimalHitbox.Position)
+                    Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, predictedPos)
                 elseif RageMode == "MELE" then
                     local backCFrame = predictedCFrame * CFrame.Angles(0, math.rad(180), 0)
                     ApplyFakePosition(myRoot, backCFrame)
@@ -1436,18 +2103,109 @@ MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {Default = "RightShi
 MenuGroup:AddButton("Unload", function()
     DisableRageOptimization()
     toggleSlingBypass(false)
-    ScreenGui:Destroy()
+    StopFreecam()
+    if ScreenGui then ScreenGui:Destroy() end
+    for _, line in pairs(Crosshair) do pcall(function() line:Remove() end) end
+    for _, d in pairs(radarDots) do pcall(function() d:Remove() end) end
+    pcall(function() RadarBG:Remove() RadarBorder:Remove() RadarCenter:Remove() end)
+    for _, v in pairs(TargetHUD) do pcall(function() v:Remove() end) end
     Library:Unload()
 end)
 
 Library.ToggleKeybind = Options.MenuKeybind
+
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({"MenuKeybind"})
+SaveManager:SetIgnoreIndexes({"MenuKeybind", "KeybindMenuOpen"})
 ThemeManager:SetFolder("ApocalypseHub")
 SaveManager:SetFolder("ApocalypseHub/configs")
-SaveManager:BuildConfigSection(Tabs["UI Settings"])
+
+local ConfigGroup = Tabs["UI Settings"]:AddRightGroupbox("Config System")
+ConfigGroup:AddInput("ConfigName", {Default = "default", Numeric = false, Finished = false, Text = "Config Name", Placeholder = "Nombre de la config..."})
+ConfigGroup:AddButton("Save Config", function()
+    local name = Options.ConfigName.Value
+    if not name or name == "" then Library:Notify("Pon un nombre a la config", 3) return end
+    local success = pcall(function() SaveManager:Save(name) end)
+    if success then Library:Notify("Config \"" .. name .. "\" guardada", 4) else Library:Notify("Error al guardar", 4) end
+end)
+ConfigGroup:AddButton("Load Config", function()
+    local name = Options.ConfigName.Value
+    if not name or name == "" then Library:Notify("Pon el nombre de la config", 3) return end
+    local success = pcall(function() SaveManager:Load(name) end)
+    if success then Library:Notify("Config \"" .. name .. "\" cargada", 4) else Library:Notify("Config no encontrada", 4) end
+end)
+ConfigGroup:AddButton("Delete Config", function()
+    local name = Options.ConfigName.Value
+    if not name or name == "" then Library:Notify("Pon el nombre a eliminar", 3) return end
+    local success = pcall(function() SaveManager:Delete(name) end)
+    if success then Library:Notify("Config eliminada", 4) else Library:Notify("No se pudo eliminar", 3) end
+end)
+ConfigGroup:AddButton("Refresh Config List", function()
+    local list = SaveManager:GetConfigList() or {}
+    if #list == 0 then Library:Notify("No hay configs guardadas", 3) else Library:Notify("Configs:\n" .. table.concat(list, "\n"), 6) end
+end)
+ConfigGroup:AddToggle("AutoLoadConfig", {Text = "Auto Load Config on Join", Default = true})
+ConfigGroup:AddInput("AutoLoadName", {Default = "default", Numeric = false, Finished = false, Text = "AutoLoad Config Name", Placeholder = "default"})
+
+local ExportGroup = Tabs["UI Settings"]:AddLeftGroupbox("Export / Import")
+ExportGroup:AddButton("Export Config to Clipboard", function()
+    local name = Options.ConfigName.Value
+    if not name or name == "" then Library:Notify("Pon un nombre primero", 3) return end
+    pcall(function()
+        SaveManager:Save(name)
+        local path = "ApocalypseHub/configs/" .. name .. ".json"
+        if isfile and isfile(path) then
+            setclipboard(readfile(path))
+            Library:Notify("Config exportada al clipboard", 4)
+        else
+            Library:Notify("No se pudo exportar", 4)
+        end
+    end)
+end)
+ExportGroup:AddButton("Import Config from Clipboard", function()
+    local name = Options.ConfigName.Value
+    if not name or name == "" then Library:Notify("Pon un nombre para importar", 3) return end
+    local clipboard = ""
+    pcall(function() clipboard = getclipboard() end)
+    if not clipboard or clipboard == "" then Library:Notify("Clipboard vacío", 3) return end
+    local success = pcall(function()
+        local path = "ApocalypseHub/configs/" .. name .. ".json"
+        writefile(path, clipboard)
+        SaveManager:Load(name)
+    end)
+    if success then Library:Notify("Config importada como \"" .. name .. "\"", 5) else Library:Notify("Error al importar", 4) end
+end)
+
+local AutoSaveGroup = Tabs["UI Settings"]:AddRightGroupbox("Auto Save")
+AutoSaveGroup:AddToggle("AutoSaveEnabled", {Text = "Auto Save every 30s", Default = false, Callback = function(v) getgenv().ApocalypseAutoSave = v end})
+AutoSaveGroup:AddInput("AutoSaveName", {Default = "autosave", Text = "Auto Save Config Name", Placeholder = "autosave"})
+
+task.spawn(function()
+    while task.wait(30) do
+        if getgenv().ApocalypseAutoSave then
+            local name = (Options.AutoSaveName and Options.AutoSaveName.Value) or "autosave"
+            pcall(function() SaveManager:Save(name) end)
+        end
+    end
+end)
+
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
-pcall(function() SaveManager:LoadAutoloadConfig() end)
-Library:Notify("THANKS FOR USING APOCALYPSE HUB", 5)
+SaveManager:BuildConfigSection(Tabs["UI Settings"])
+
+task.spawn(function()
+    task.wait(1.2)
+    local autoLoadEnabled = true
+    local autoLoadName = "default"
+    pcall(function()
+        if Options.AutoLoadConfig then autoLoadEnabled = Options.AutoLoadConfig.Value end
+        if Options.AutoLoadName then autoLoadName = Options.AutoLoadName.Value end
+    end)
+    if autoLoadEnabled and autoLoadName and autoLoadName ~= "" then
+        local success = pcall(function() SaveManager:Load(autoLoadName) end)
+        if success then Library:Notify("Config \"" .. autoLoadName .. "\" cargada automáticamente", 4)
+        else Library:Notify("No se encontró config de autoload", 3) end
+    end
+end)
+
+Library:Notify("APOCALYPSE HUB | Ping + FPS ESP Loaded", 5)
