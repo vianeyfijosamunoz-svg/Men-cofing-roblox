@@ -2114,8 +2114,8 @@ RunService.RenderStepped:Connect(function(dt)
                     local lateral = math.sin(tickCount * 0.7) * 1.8
                     ApplyFakePosition(myRoot, predictedCFrame * CFrame.new(lateral, 0, 0.65))
                 elseif RageMode == "BAITING SYSTEM" then
-                    local angle = (tickCount * (50000000 * 0.05)) * 50000
-                    myRoot.CFrame = predictedCFrame * CFrame.Angles(0, angle, 0) * CFrame.new(0, 500000, 10000000)
+                    local angle = (tickCount * (50000000 * 0.05)) * 3
+                    myRoot.CFrame = predictedCFrame * CFrame.Angles(0, angle, 0) * CFrame.new(0, 10000, 10000000)
                 end
             else
                 local spamOffset = Vector3.new(math.random(-9000000, 9000000), math.random(1000, 9000000), math.random(-9000000, 9000000))
@@ -2424,4 +2424,4 @@ task.spawn(function()
     end
 end)
 
-Library:Notify("APOCALYPSE HUB | BAITING SYSTEM + Character Extras + Crosshair Rotation Loaded", 5)
+Library:Notify("APOCALYPSE HUB | BAITING SYSTEM Updated (Angle 3 | Height 10000)", 5)
