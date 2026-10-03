@@ -54,6 +54,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
 
 local states = {
     spoofer_state = {
@@ -274,6 +275,14 @@ local originalCameraType = nil
 local originalCameraSubject = nil
 
 local CurrentTarget = nil
+
+local DamageNumbersEnabled = false
+local StreamerModeEnabled = false
+local KeybindDisplayEnabled = false
+local FlightEnabled = false
+local FlightSpeed = 60
+local flightBodyVelocity = nil
+local flightBodyGyro = nil
 
 local LeftESPGroup = Tabs.ESP:AddLeftGroupbox("ESP Visuals (Drawing)")
 local RightESPGroup = Tabs.ESP:AddRightGroupbox("ESP Settings & Filters")
@@ -628,11 +637,27 @@ ExtraVisualsGroup:AddSlider("FreecamSpeedSlider", {
     Text = "Freecam Speed", Default = 50, Min = 20, Max = 150, Rounding = 0,
     Callback = function(v) FreecamSpeed = v end
 })
+ExtraVisualsGroup:AddToggle("DamageNumbersToggle", {
+    Text = "Damage Numbers",
+    Default = false,
+    Callback = function(v) DamageNumbersEnabled = v end
+})
+ExtraVisualsGroup:AddToggle("StreamerModeToggle", {
+    Text = "Streamer Mode (Hide Names)",
+    Default = false,
+    Callback = function(v) StreamerModeEnabled = v end
+})
+ExtraVisualsGroup:AddToggle("KeybindDisplayToggle", {
+    Text = "Keybind Display",
+    Default = false,
+    Callback = function(v) KeybindDisplayEnabled = v end
+})
 
 local LeftMiscGroup = Tabs.MISC:AddLeftGroupbox("Device Spoofer")
 local RightMiscGroup = Tabs.MISC:AddRightGroupbox("Server & Extra Tools")
 local SpinbotGroup = Tabs.MISC:AddLeftGroupbox("Spinbot & Movement")
 local AutoGroup = Tabs.MISC:AddRightGroupbox("Auto Features")
+local FlightGroup = Tabs.MISC:AddLeftGroupbox("Flight")
 
 LeftMiscGroup:AddToggle("SpoofDeviceToggle", {
     Text = "Enable Device Spoofing", Default = false,
@@ -703,6 +728,22 @@ AutoGroup:AddToggle("AntiAFKToggle", {
     Callback = function(v) getgenv().AntiAFKEnabled = v end
 })
 
+FlightGroup:AddToggle("FlightToggle", {
+    Text = "Flight Enabled",
+    Default = false,
+    Callback = function(v)
+        FlightEnabled = v
+        if not v then
+            if flightBodyVelocity then flightBodyVelocity:Destroy() flightBodyVelocity = nil end
+            if flightBodyGyro then flightBodyGyro:Destroy() flightBodyGyro = nil end
+        end
+    end
+}):AddKeyPicker("FlightKey", {Default = "F", Text = "Flight Key", Mode = "Toggle", SyncToggleState = true})
+FlightGroup:AddSlider("FlightSpeedSlider", {
+    Text = "Flight Speed", Default = 60, Min = 20, Max = 150, Rounding = 0,
+    Callback = function(v) FlightSpeed = v end
+})
+
 local LeftCharGroup = Tabs.CARACTER:AddLeftGroupbox("Character Mods")
 local RightCharGroup = Tabs.CARACTER:AddRightGroupbox("Movement")
 
@@ -764,6 +805,8 @@ RightCharGroup:AddSlider("SpeedBoostSlider", {
 })
 
 local espCache = {}
+local damageNumbers = {}
+local lastHealth = {}
 
 local function createDrawing(objType, properties)
     local obj = Drawing.new(objType)
@@ -824,6 +867,91 @@ end
 Players.PlayerAdded:Connect(initESP)
 Players.PlayerRemoving:Connect(removeESP)
 for _, p in ipairs(Players:GetPlayers()) do initESP(p) end
+
+local function SpawnDamageNumber(position, damage)
+    if not DamageNumbersEnabled then return end
+    local billboard = Instance.new("BillboardGui")
+    billboard.Size = UDim2.new(0, 100, 0, 40)
+    billboard.StudsOffset = Vector3.new(math.random(-2, 2), 3, math.random(-2, 2))
+    billboard.AlwaysOnTop = true
+    billboard.Adornee = nil
+    billboard.Parent = CoreGui
+
+    local part = Instance.new("Part")
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 1
+    part.Size = Vector3.new(0.1, 0.1, 0.1)
+    part.Position = position
+    part.Parent = workspace
+    billboard.Adornee = part
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = "-" .. math.floor(damage)
+    label.TextColor3 = Color3.fromRGB(255, 50, 50)
+    label.TextStrokeTransparency = 0
+    label.TextStrokeColor3 = Color3.new(0, 0, 0)
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 22
+    label.Parent = billboard
+
+    table.insert(damageNumbers, {gui = billboard, part = part, start = tick()})
+
+    task.delay(1.2, function()
+        pcall(function()
+            billboard:Destroy()
+            part:Destroy()
+        end)
+    end)
+end
+
+local function CheckDamageNumbers()
+    if not DamageNumbersEnabled then return end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local hum = player.Character:FindFirstChildOfClass("Humanoid")
+            if hum then
+                local current = hum.Health
+                local previous = lastHealth[player]
+                if previous and current < previous and (previous - current) > 1 then
+                    local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        SpawnDamageNumber(hrp.Position + Vector3.new(0, 2, 0), previous - current)
+                    end
+                end
+                lastHealth[player] = current
+            end
+        end
+    end
+end
+
+local KeybindDisplay = Drawing.new("Text")
+KeybindDisplay.Visible = false
+KeybindDisplay.Center = false
+KeybindDisplay.Outline = true
+KeybindDisplay.Size = 14
+KeybindDisplay.Color = Color3.fromRGB(255, 255, 255)
+KeybindDisplay.Position = Vector2.new(20, Camera.ViewportSize.Y / 2 - 100)
+KeybindDisplay.ZIndex = 100
+
+local function UpdateKeybindDisplay()
+    if not KeybindDisplayEnabled then
+        KeybindDisplay.Visible = false
+        return
+    end
+    local lines = {
+        "Keybinds:",
+        "Aimbot: E",
+        "Silent: Q",
+        "Spinbot: V",
+        "Flight: F",
+        "Menu: RightShift"
+    }
+    KeybindDisplay.Text = table.concat(lines, "\n")
+    KeybindDisplay.Visible = true
+end
 
 local function ApplyRageOptimization()
     pcall(function()
@@ -974,7 +1102,7 @@ local function PlayKillEffect(killedName)
     flash.BackgroundTransparency = 0.4
     flash.BorderSizePixel = 0
     flash.ZIndex = 100
-    flash.Parent = game:GetService("CoreGui")
+    flash.Parent = CoreGui
 
     local text = Instance.new("TextLabel")
     text.Size = UDim2.new(0, 500, 0, 60)
@@ -1113,7 +1241,7 @@ end
 TargetHUD.Name.Size = 16
 TargetHUD.Name.Color = Color3.fromRGB(0, 255, 128)
 
-local ScreenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
+local ScreenGui = Instance.new("ScreenGui", CoreGui)
 local ManipLabel = Instance.new("TextLabel", ScreenGui)
 ManipLabel.Size = UDim2.new(0, 450, 0, 20)
 ManipLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -1277,7 +1405,7 @@ local function UpdateTargetHUD()
     TargetHUD.Background.Size = Vector2.new(hudW, hudH)
     TargetHUD.Background.Visible = true
 
-    TargetHUD.Name.Text = CurrentTarget.Name
+    TargetHUD.Name.Text = StreamerModeEnabled and "Player" or CurrentTarget.Name
     TargetHUD.Name.Position = Vector2.new(hudX + 12, hudY + 8)
     TargetHUD.Name.Visible = true
 
@@ -1409,6 +1537,8 @@ end
 
 LocalPlayer.CharacterAdded:Connect(function()
     StopFreecam()
+    if flightBodyVelocity then flightBodyVelocity:Destroy() flightBodyVelocity = nil end
+    if flightBodyGyro then flightBodyGyro:Destroy() flightBodyGyro = nil end
 end)
 
 task.spawn(function()
@@ -1428,8 +1558,10 @@ RunService.RenderStepped:Connect(function()
     UpdateCrosshair()
     UpdateRadar()
     UpdateTargetHUD()
+    UpdateKeybindDisplay()
     SendKillSayMessage()
     CheckKills()
+    CheckDamageNumbers()
 
     if not getgenv().SilentAimEnabled then 
         activeTargetPos = nil
@@ -1575,7 +1707,7 @@ RunService.RenderStepped:Connect(function()
 
                         if ESPConfig.NameEnabled then
                             visuals.Name.Visible = true
-                            visuals.Name.Text = player.Name
+                            visuals.Name.Text = StreamerModeEnabled and "Player" or player.Name
                             visuals.Name.Size = ESPConfig.TextSize
                             visuals.Name.Outline = ESPConfig.TextOutlineEnabled
                             visuals.Name.Position = Vector2.new(pos.X, boxPos.Y - ESPConfig.TextSize - 4)
@@ -1983,6 +2115,48 @@ RunService.RenderStepped:Connect(function(dt)
         local hrp = LocalPlayer.Character.HumanoidRootPart
         hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(getgenv().SpinbotSpeed), 0)
     end
+
+    if FlightEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = LocalPlayer.Character.HumanoidRootPart
+        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then hum.PlatformStand = true end
+
+        if not flightBodyVelocity or not flightBodyVelocity.Parent then
+            flightBodyVelocity = Instance.new("BodyVelocity")
+            flightBodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+            flightBodyVelocity.Velocity = Vector3.zero
+            flightBodyVelocity.Parent = hrp
+        end
+        if not flightBodyGyro or not flightBodyGyro.Parent then
+            flightBodyGyro = Instance.new("BodyGyro")
+            flightBodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+            flightBodyGyro.P = 9e4
+            flightBodyGyro.Parent = hrp
+        end
+
+        local move = Vector3.zero
+        local camCF = Camera.CFrame
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + camCF.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - camCF.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - camCF.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + camCF.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, 1, 0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move = move - Vector3.new(0, 1, 0) end
+
+        if move.Magnitude > 0 then
+            flightBodyVelocity.Velocity = move.Unit * FlightSpeed
+        else
+            flightBodyVelocity.Velocity = Vector3.zero
+        end
+        flightBodyGyro.CFrame = camCF
+    else
+        if LocalPlayer.Character then
+            local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if hum then hum.PlatformStand = false end
+        end
+        if flightBodyVelocity then flightBodyVelocity:Destroy() flightBodyVelocity = nil end
+        if flightBodyGyro then flightBodyGyro:Destroy() flightBodyGyro = nil end
+    end
 end)
 
 RunService.Heartbeat:Connect(function()
@@ -2104,11 +2278,14 @@ MenuGroup:AddButton("Unload", function()
     DisableRageOptimization()
     toggleSlingBypass(false)
     StopFreecam()
+    if flightBodyVelocity then flightBodyVelocity:Destroy() end
+    if flightBodyGyro then flightBodyGyro:Destroy() end
     if ScreenGui then ScreenGui:Destroy() end
     for _, line in pairs(Crosshair) do pcall(function() line:Remove() end) end
     for _, d in pairs(radarDots) do pcall(function() d:Remove() end) end
     pcall(function() RadarBG:Remove() RadarBorder:Remove() RadarCenter:Remove() end)
     for _, v in pairs(TargetHUD) do pcall(function() v:Remove() end) end
+    pcall(function() KeybindDisplay:Remove() end)
     Library:Unload()
 end)
 
@@ -2208,4 +2385,4 @@ task.spawn(function()
     end
 end)
 
-Library:Notify("APOCALYPSE HUB | Ping + FPS ESP Loaded", 5)
+Library:Notify("APOCALYPSE HUB | Damage Numbers + Streamer Mode + Keybinds + Flight Loaded", 5)
