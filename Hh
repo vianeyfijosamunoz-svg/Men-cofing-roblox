@@ -146,6 +146,7 @@ local SilentMaxDistance = 500
 local activeTargetPos = nil
 local PredictionEnabled = true
 local PredictionAmount = 0.165
+local RagePredictionAmount = 4.125
 
 local KatanaFlashEnabled = false
 local EscudoEnabled = false
@@ -227,6 +228,13 @@ getgenv().InfiniteJumpEnabled = false
 getgenv().SpeedBoostEnabled = false
 getgenv().SpeedBoostValue = 30
 
+getgenv().NoFallDamageEnabled = false
+getgenv().AntiRagdollEnabled = false
+getgenv().ForceSitEnabled = false
+getgenv().RemoveAnimationsEnabled = false
+getgenv().CharacterScaleEnabled = false
+getgenv().CharacterScaleValue = 1
+
 local defaultGravity = workspace.Gravity
 
 local ESPConfig = {
@@ -260,6 +268,9 @@ local CrosshairThickness = 1.5
 local CrosshairGap = 4
 local CrosshairColor = Color3.fromRGB(0, 255, 128)
 local CrosshairOutline = true
+local CrosshairRotationEnabled = false
+local CrosshairRotationSpeed = 5
+local crosshairAngle = 0
 
 local RadarEnabled = false
 local RadarSize = 120
@@ -283,24 +294,6 @@ local FlightEnabled = false
 local FlightSpeed = 60
 local flightBodyVelocity = nil
 local flightBodyGyro = nil
-
-local KillSoundsEnabled = false
-local SelectedKillSound = "CSGO"
-local KillSoundVolume = 1
-
-local KillSoundIds = {
-    ["Neverlose"] = "rbxassetid://9114224527",
-    ["CSGO"] = "rbxassetid://3415635180",
-    ["Among Us"] = "rbxassetid://5153700337",
-    ["Bruh"] = "rbxassetid://6607339540",
-    ["Minecraft"] = "rbxassetid://5158840470",
-    ["Oof"] = "rbxassetid://178452483",
-    ["TF2"] = "rbxassetid://2865227270",
-    ["Valorant"] = "rbxassetid://9113825145",
-    ["Fortnite"] = "rbxassetid://5153700337",
-    ["Anime Hit"] = "rbxassetid://9114224527",
-    ["Headshot Classic"] = "rbxassetid://3415635180"
-}
 
 local LeftESPGroup = Tabs.ESP:AddLeftGroupbox("ESP Visuals (Drawing)")
 local RightESPGroup = Tabs.ESP:AddRightGroupbox("ESP Settings & Filters")
@@ -333,7 +326,6 @@ local LeftVisualsGroup = Tabs.Visuals:AddLeftGroupbox("World & Environment")
 local RightVisualsGroup = Tabs.Visuals:AddRightGroupbox("Lighting & Post-Processing")
 local CrosshairGroup = Tabs.Visuals:AddLeftGroupbox("Custom Crosshair")
 local ExtraVisualsGroup = Tabs.Visuals:AddRightGroupbox("Extra Visuals")
-local KillSoundsGroup = Tabs.Visuals:AddLeftGroupbox("Kill Sounds")
 
 local defaultLighting = {
     Brightness = Lighting.Brightness,
@@ -623,6 +615,15 @@ CrosshairGroup:AddToggle("CrosshairOutlineToggle", {
     Text = "Outline", Default = true,
     Callback = function(v) CrosshairOutline = v end
 })
+CrosshairGroup:AddToggle("CrosshairRotationToggle", {
+    Text = "Rotation",
+    Default = false,
+    Callback = function(v) CrosshairRotationEnabled = v end
+})
+CrosshairGroup:AddSlider("CrosshairRotationSpeedSlider", {
+    Text = "Rotation Speed", Default = 5, Min = 1, Max = 30, Rounding = 0,
+    Callback = function(v) CrosshairRotationSpeed = v end
+})
 CrosshairGroup:AddLabel("Crosshair Color"):AddColorPicker("CrosshairColorPicker", {
     Default = Color3.fromRGB(0, 255, 128),
     Title = "Crosshair Color",
@@ -670,27 +671,6 @@ ExtraVisualsGroup:AddToggle("KeybindDisplayToggle", {
     Text = "Keybind Display",
     Default = false,
     Callback = function(v) KeybindDisplayEnabled = v end
-})
-
-KillSoundsGroup:AddToggle("KillSoundsToggle", {
-    Text = "Enable Kill Sounds",
-    Default = false,
-    Callback = function(v) KillSoundsEnabled = v end
-})
-KillSoundsGroup:AddDropdown("KillSoundDropdown", {
-    Values = {"Neverlose", "CSGO", "Among Us", "Bruh", "Minecraft", "Oof", "TF2", "Valorant", "Fortnite", "Anime Hit", "Headshot Classic"},
-    Default = 2,
-    Multi = false,
-    Text = "Sound",
-    Callback = function(v) SelectedKillSound = v end
-})
-KillSoundsGroup:AddSlider("KillSoundVolumeSlider", {
-    Text = "Volume",
-    Default = 1,
-    Min = 0.1,
-    Max = 2,
-    Rounding = 1,
-    Callback = function(v) KillSoundVolume = v end
 })
 
 local LeftMiscGroup = Tabs.MISC:AddLeftGroupbox("Device Spoofer")
@@ -786,6 +766,7 @@ FlightGroup:AddSlider("FlightSpeedSlider", {
 
 local LeftCharGroup = Tabs.CARACTER:AddLeftGroupbox("Character Mods")
 local RightCharGroup = Tabs.CARACTER:AddRightGroupbox("Movement")
+local ExtraCharGroup = Tabs.CARACTER:AddLeftGroupbox("Extra Character")
 
 LeftCharGroup:AddToggle("UndergroundToggle", {
     Text = "Underground (5 studs)", Default = false,
@@ -842,6 +823,41 @@ RightCharGroup:AddToggle("SpeedBoostToggle", {
 RightCharGroup:AddSlider("SpeedBoostSlider", {
     Text = "Speed Boost Value", Default = 30, Min = 10, Max = 150, Rounding = 0,
     Callback = function(v) getgenv().SpeedBoostValue = v end
+})
+
+ExtraCharGroup:AddToggle("NoFallDamageToggle", {
+    Text = "No Fall Damage", Default = false,
+    Callback = function(v) getgenv().NoFallDamageEnabled = v end
+})
+ExtraCharGroup:AddToggle("AntiRagdollToggle", {
+    Text = "Anti Ragdoll", Default = false,
+    Callback = function(v) getgenv().AntiRagdollEnabled = v end
+})
+ExtraCharGroup:AddToggle("ForceSitToggle", {
+    Text = "Force Sit", Default = false,
+    Callback = function(v) getgenv().ForceSitEnabled = v end
+})
+ExtraCharGroup:AddToggle("RemoveAnimationsToggle", {
+    Text = "Remove Animations", Default = false,
+    Callback = function(v)
+        getgenv().RemoveAnimationsEnabled = v
+        if v and LocalPlayer.Character then
+            local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if hum then
+                for _, track in pairs(hum:GetPlayingAnimationTracks()) do
+                    track:Stop()
+                end
+            end
+        end
+    end
+})
+ExtraCharGroup:AddToggle("CharacterScaleToggle", {
+    Text = "Character Scale", Default = false,
+    Callback = function(v) getgenv().CharacterScaleEnabled = v end
+})
+ExtraCharGroup:AddSlider("CharacterScaleSlider", {
+    Text = "Scale Value", Default = 1, Min = 0.5, Max = 3, Rounding = 1,
+    Callback = function(v) getgenv().CharacterScaleValue = v end
 })
 
 local espCache = {}
@@ -908,29 +924,8 @@ Players.PlayerAdded:Connect(initESP)
 Players.PlayerRemoving:Connect(removeESP)
 for _, p in ipairs(Players:GetPlayers()) do initESP(p) end
 
-local function PlayKillSound()
-    if not KillSoundsEnabled then return end
-    local soundId = KillSoundIds[SelectedKillSound]
-    if not soundId then return end
-    local sound = Instance.new("Sound")
-    sound.SoundId = soundId
-    sound.Volume = KillSoundVolume
-    sound.PlayOnRemove = false
-    sound.Parent = SoundService
-    sound:Play()
-    sound.Ended:Connect(function()
-        sound:Destroy()
-    end)
-    task.delay(3, function()
-        if sound and sound.Parent then
-            sound:Destroy()
-        end
-    end)
-end
-
 local function SpawnDamageNumber(position, damage)
     if not DamageNumbersEnabled then return end
-    PlayKillSound()
     local billboard = Instance.new("BillboardGui")
     billboard.Size = UDim2.new(0, 100, 0, 40)
     billboard.StudsOffset = Vector3.new(math.random(-2, 2), 3, math.random(-2, 2))
@@ -1052,43 +1047,6 @@ local function DisableRageOptimization()
     pcall(function() SoundService.Volume = 1 end)
 end
 
-local targetPos = CFrame.new(500000, 500, 9000)
-local projectiles = {}
-local slingActive = false
-local slingConn, childAddedConn, childRemovedConn
-
-local function toggleSlingBypass(state)
-    slingActive = state
-    if slingActive then
-        childAddedConn = workspace.ChildAdded:Connect(function(o)
-            if not o:IsA("BasePart") then return end
-            if o.Name == "CoreProjectile" then projectiles[o] = true
-            elseif o.Name == "Part" then
-                task.defer(function() if o and o.Parent and o.AssemblyLinearVelocity.Magnitude > 50 then projectiles[o] = true end end)
-            end
-        end)
-        childRemovedConn = workspace.ChildRemoved:Connect(function(o) projectiles[o] = nil end)
-        slingConn = RunService.Heartbeat:Connect(function()
-            pcall(function()
-                for _, p in pairs(Players:GetPlayers()) do
-                    if p ~= LocalPlayer and p.Character then
-                        local h = p.Character:FindFirstChild("HumanoidRootPart")
-                        if h then h.CFrame = targetPos h.AssemblyLinearVelocity = Vector3.zero h.AssemblyAngularVelocity = Vector3.zero end
-                    end
-                end
-                for p in pairs(projectiles) do
-                    if p and p.Parent then p.CFrame = targetPos p.AssemblyLinearVelocity = Vector3.zero else projectiles[p] = nil end
-                end
-            end)
-        end)
-    else
-        if slingConn then slingConn:Disconnect() slingConn = nil end
-        if childAddedConn then childAddedConn:Disconnect() childAddedConn = nil end
-        if childRemovedConn then childRemovedConn:Disconnect() childRemovedConn = nil end
-        table.clear(projectiles)
-    end
-end
-
 local function RunInstantAutoShot()
     pcall(function()
         local char = LocalPlayer.Character
@@ -1112,6 +1070,12 @@ local function GetPredictedPosition(part)
     if not PredictionEnabled or not part then return part.Position end
     local velocity = part.AssemblyLinearVelocity
     return part.Position + (velocity * PredictionAmount)
+end
+
+local function GetRagePredictedPosition(part)
+    if not part then return part.Position end
+    local velocity = part.AssemblyLinearVelocity
+    return part.Position + (velocity * RagePredictionAmount) + (velocity.Unit * 2.5)
 end
 
 local function GetPlayerStat(player, names)
@@ -1328,19 +1292,48 @@ local function UpdateCrosshair()
     local size = CrosshairSize
     local gap = CrosshairGap
     local thick = CrosshairThickness
+
+    if CrosshairRotationEnabled then
+        crosshairAngle = crosshairAngle + (CrosshairRotationSpeed * 0.05)
+    else
+        crosshairAngle = 0
+    end
+
+    local function rotatePoint(point, angle)
+        local cosA = math.cos(angle)
+        local sinA = math.sin(angle)
+        local dx = point.X - center.X
+        local dy = point.Y - center.Y
+        return Vector2.new(
+            center.X + (dx * cosA - dy * sinA),
+            center.Y + (dx * sinA + dy * cosA)
+        )
+    end
+
     for _, line in pairs(Crosshair) do
         line.Visible = CrosshairEnabled
         line.Thickness = thick
         line.Color = CrosshairColor
     end
-    Crosshair.Top.From = center - Vector2.new(0, gap)
-    Crosshair.Top.To = center - Vector2.new(0, gap + size)
-    Crosshair.Bottom.From = center + Vector2.new(0, gap)
-    Crosshair.Bottom.To = center + Vector2.new(0, gap + size)
-    Crosshair.Left.From = center - Vector2.new(gap, 0)
-    Crosshair.Left.To = center - Vector2.new(gap + size, 0)
-    Crosshair.Right.From = center + Vector2.new(gap, 0)
-    Crosshair.Right.To = center + Vector2.new(gap + size, 0)
+
+    local topFrom = center - Vector2.new(0, gap)
+    local topTo = center - Vector2.new(0, gap + size)
+    local bottomFrom = center + Vector2.new(0, gap)
+    local bottomTo = center + Vector2.new(0, gap + size)
+    local leftFrom = center - Vector2.new(gap, 0)
+    local leftTo = center - Vector2.new(gap + size, 0)
+    local rightFrom = center + Vector2.new(gap, 0)
+    local rightTo = center + Vector2.new(gap + size, 0)
+
+    Crosshair.Top.From = rotatePoint(topFrom, crosshairAngle)
+    Crosshair.Top.To = rotatePoint(topTo, crosshairAngle)
+    Crosshair.Bottom.From = rotatePoint(bottomFrom, crosshairAngle)
+    Crosshair.Bottom.To = rotatePoint(bottomTo, crosshairAngle)
+    Crosshair.Left.From = rotatePoint(leftFrom, crosshairAngle)
+    Crosshair.Left.To = rotatePoint(leftTo, crosshairAngle)
+    Crosshair.Right.From = rotatePoint(rightFrom, crosshairAngle)
+    Crosshair.Right.To = rotatePoint(rightTo, crosshairAngle)
+
     if CrosshairOutline then
         Crosshair.OutlineTop.Visible = CrosshairEnabled
         Crosshair.OutlineBottom.Visible = CrosshairEnabled
@@ -1582,6 +1575,28 @@ task.spawn(function()
         end
     end
 end)
+
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, idx)
+    if not checkcaller() then
+        if getgenv().SilentAimEnabled and activeTargetPos and idx == "ViewportSize" and self == Camera then
+            local pos, on = Camera:WorldToViewportPoint(activeTargetPos)
+            if on then return Vector2.new(pos.X * 2, pos.Y * 2) end
+        end
+        if RagebotEnabled and CurrentTarget and CurrentTarget.Character then
+            local hrp = CurrentTarget.Character:FindFirstChild("HumanoidRootPart") or CurrentTarget.Character:FindFirstChild("Head")
+            if hrp and (idx == "CFrame" or idx == "Position") and self == hrp then
+                local predicted = GetRagePredictedPosition(hrp)
+                if idx == "Position" then
+                    return predicted
+                elseif idx == "CFrame" then
+                    return CFrame.new(predicted)
+                end
+            end
+        end
+    end
+    return oldIndex(self, idx)
+end))
 
 RunService.RenderStepped:Connect(function()
     UpdateFOV()
@@ -1874,15 +1889,6 @@ RunService.RenderStepped:Connect(function()
     ManipLabel.Text = ManipulationText
 end)
 
-local oldIndex
-oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, idx)
-    if getgenv().SilentAimEnabled and activeTargetPos and not checkcaller() and idx == "ViewportSize" and self == Camera then
-        local pos, on = Camera:WorldToViewportPoint(activeTargetPos)
-        if on then return Vector2.new(pos.X * 2, pos.Y * 2) end
-    end
-    return oldIndex(self, idx)
-end))
-
 local function toggleTableAttribute(attr, val)
     if getgc then
         for _, gcVal in pairs(getgc(true)) do
@@ -1995,26 +2001,23 @@ RagebotGroupbox:AddToggle("RagebotToggle", {
             ApplyRageOptimization()
             if RageMode == "GUN" then EnableRapidFire(true) getgenv().SilentAimEnabled = true UpdateFOV()
             elseif RageMode == "MELE" or RageMode == "KNIFE" then EnableFastMelee(true)
-            elseif RageMode == "SLINGSHOT (BETA)" then toggleSlingBypass(true) end
+            end
         else
             DisableRageOptimization()
-            if RageMode == "GUN" then getgenv().SilentAimEnabled = false UpdateFOV()
-            elseif RageMode == "SLINGSHOT (BETA)" then toggleSlingBypass(false) end
+            if RageMode == "GUN" then getgenv().SilentAimEnabled = false UpdateFOV() end
         end
     end
 })
 RagebotGroupbox:AddToggle("AntiKnifeToggle", {Text = "ANTI KNIFE", Default = false, Callback = function(Value) AntiKnifeEnabled = Value end})
 RagebotGroupbox:AddDropdown("RageModeDropdown", {
-    Values = {"GUN", "MELE", "KNIFE", "SLINGSHOT (BETA)"}, Default = 1, Multi = false, Text = "Rage Mode",
+    Values = {"GUN", "MELE", "KNIFE", "BAITING SYSTEM"}, Default = 1, Multi = false, Text = "Rage Mode",
     Callback = function(Value)
-        local oldMode = RageMode
         RageMode = Value
-        if oldMode == "SLINGSHOT (BETA)" and RageMode ~= "SLINGSHOT (BETA)" then toggleSlingBypass(false) end
         if RagebotEnabled then
             ApplyRageOptimization()
-            if RageMode == "GUN" then toggleSlingBypass(false) EnableRapidFire(true) getgenv().SilentAimEnabled = true UpdateFOV()
-            elseif RageMode == "MELE" or RageMode == "KNIFE" then toggleSlingBypass(false) getgenv().SilentAimEnabled = false UpdateFOV() EnableFastMelee(true)
-            elseif RageMode == "SLINGSHOT (BETA)" then getgenv().SilentAimEnabled = false UpdateFOV() toggleSlingBypass(true) end
+            if RageMode == "GUN" then EnableRapidFire(true) getgenv().SilentAimEnabled = true UpdateFOV()
+            elseif RageMode == "MELE" or RageMode == "KNIFE" then getgenv().SilentAimEnabled = false UpdateFOV() EnableFastMelee(true)
+            elseif RageMode == "BAITING SYSTEM" then getgenv().SilentAimEnabled = false UpdateFOV() end
         end
     end
 })
@@ -2097,8 +2100,9 @@ RunService.RenderStepped:Connect(function(dt)
                 local tChar = target.Character
                 local tHrp = tChar.HumanoidRootPart
                 local optimalHitbox = tChar:FindFirstChild("Head") or tHrp
-                local predictedPos = GetPredictedPosition(optimalHitbox)
+                local predictedPos = GetRagePredictedPosition(optimalHitbox)
                 local predictedCFrame = CFrame.new(predictedPos)
+
                 if RageMode == "GUN" then
                     local behindCFrame = predictedCFrame * CFrame.new(0, 0, 2)
                     ApplyFakePosition(myRoot, behindCFrame)
@@ -2109,6 +2113,9 @@ RunService.RenderStepped:Connect(function(dt)
                 elseif RageMode == "KNIFE" then
                     local lateral = math.sin(tickCount * 0.7) * 1.8
                     ApplyFakePosition(myRoot, predictedCFrame * CFrame.new(lateral, 0, 0.65))
+                elseif RageMode == "BAITING SYSTEM" then
+                    local angle = (tickCount * (50000000 * 0.05)) * 50000
+                    myRoot.CFrame = predictedCFrame * CFrame.Angles(0, angle, 0) * CFrame.new(0, 500000, 10000000)
                 end
             else
                 local spamOffset = Vector3.new(math.random(-9000000, 9000000), math.random(1000, 9000000), math.random(-9000000, 9000000))
@@ -2168,12 +2175,15 @@ RunService.Heartbeat:Connect(function()
     local hum = char:FindFirstChildOfClass("Humanoid")
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hum or not hrp then return end
+
     if getgenv().UndergroundEnabled then
         hrp.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 5, hrp.Position.Z)
     end
+
     if getgenv().HipHeightEnabled then
         hum.HipHeight = getgenv().HipHeightValue
     end
+
     if getgenv().CharTransparencyEnabled then
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
@@ -2183,6 +2193,7 @@ RunService.Heartbeat:Connect(function()
             end
         end
     end
+
     if getgenv().NoCollisionEnabled then
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
@@ -2190,11 +2201,13 @@ RunService.Heartbeat:Connect(function()
             end
         end
     end
+
     if getgenv().GravityEnabled then
         workspace.Gravity = getgenv().GravityValue
     else
         workspace.Gravity = defaultGravity
     end
+
     if getgenv().SpeedBoostEnabled then
         local moveDir = hum.MoveDirection
         if moveDir.Magnitude > 0 then
@@ -2203,6 +2216,36 @@ RunService.Heartbeat:Connect(function()
                 hrp.AssemblyLinearVelocity.Y,
                 moveDir.Z * getgenv().SpeedBoostValue
             )
+        end
+    end
+
+    if getgenv().NoFallDamageEnabled then
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    end
+
+    if getgenv().AntiRagdollEnabled then
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+
+    if getgenv().ForceSitEnabled then
+        hum.Sit = true
+    end
+
+    if getgenv().RemoveAnimationsEnabled then
+        for _, track in pairs(hum:GetPlayingAnimationTracks()) do
+            track:Stop()
+        end
+    end
+
+    if getgenv().CharacterScaleEnabled then
+        local scale = getgenv().CharacterScaleValue
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.Size = part.Size * scale
+            end
         end
     end
 end)
@@ -2273,7 +2316,6 @@ MenuGroup:AddToggle("KeybindMenuOpen", {Default = Library.KeybindFrame.Visible, 
 MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {Default = "RightShift", NoUI = true, Text = "Menu keybind"})
 MenuGroup:AddButton("Unload", function()
     DisableRageOptimization()
-    toggleSlingBypass(false)
     StopFreecam()
     if flightBodyVelocity then flightBodyVelocity:Destroy() end
     if flightBodyGyro then flightBodyGyro:Destroy() end
@@ -2382,4 +2424,4 @@ task.spawn(function()
     end
 end)
 
-Library:Notify("APOCALYPSE HUB | Full Features Loaded", 5)
+Library:Notify("APOCALYPSE HUB | BAITING SYSTEM + Character Extras + Crosshair Rotation Loaded", 5)
