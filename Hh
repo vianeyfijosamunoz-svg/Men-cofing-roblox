@@ -2274,16 +2274,112 @@ MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {Default = "RightShi
 MenuGroup:AddButton("Unload", function()
     DisableRageOptimization()
     toggleSlingBypass(false)
+    StopFreecam()
+    if flightBodyVelocity then flightBodyVelocity:Destroy() end
+    if flightBodyGyro then flightBodyGyro:Destroy() end
+    if ScreenGui then ScreenGui:Destroy() end
+    for _, line in pairs(Crosshair) do pcall(function() line:Remove() end) end
+    for _, d in pairs(radarDots) do pcall(function() d:Remove() end) end
+    pcall(function() RadarBG:Remove() RadarBorder:Remove() RadarCenter:Remove() end)
+    for _, v in pairs(TargetHUD) do pcall(function() v:Remove() end) end
+    pcall(function() KeybindDisplay:Remove() end)
     Library:Unload()
 end)
+
+Library.ToggleKeybind = Options.MenuKeybind
 
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({"MenuKeybind"})
+SaveManager:SetIgnoreIndexes({"MenuKeybind", "KeybindMenuOpen"})
 ThemeManager:SetFolder("ApocalypseHub")
-SaveManager:SetFolder("ApocalypseHub/Rivals")
-SaveManager:BuildConfigSection(Tabs["UI Settings"])
-ThemeManager:ApplyToTab(Tabs["UI Settings"])
+SaveManager:SetFolder("ApocalypseHub/configs")
 
-Library:Notify("APOCALYPSE BETA V3 cargado correctamente", 5)
+local ConfigGroup = Tabs["UI Settings"]:AddRightGroupbox("Config System")
+ConfigGroup:AddInput("ConfigName", {Default = "default", Numeric = false, Finished = false, Text = "Config Name", Placeholder = "Nombre de la config..."})
+ConfigGroup:AddButton("Save Config", function()
+    local name = Options.ConfigName.Value
+    if not name or name == "" then Library:Notify("Pon un nombre a la config", 3) return end
+    local success = pcall(function() SaveManager:Save(name) end)
+    if success then Library:Notify("Config \"" .. name .. "\" guardada", 4) else Library:Notify("Error al guardar", 4) end
+end)
+ConfigGroup:AddButton("Load Config", function()
+    local name = Options.ConfigName.Value
+    if not name or name == "" then Library:Notify("Pon el nombre de la config", 3) return end
+    local success = pcall(function() SaveManager:Load(name) end)
+    if success then Library:Notify("Config \"" .. name .. "\" cargada", 4) else Library:Notify("Config no encontrada", 4) end
+end)
+ConfigGroup:AddButton("Delete Config", function()
+    local name = Options.ConfigName.Value
+    if not name or name == "" then Library:Notify("Pon el nombre a eliminar", 3) return end
+    local success = pcall(function() SaveManager:Delete(name) end)
+    if success then Library:Notify("Config eliminada", 4) else Library:Notify("No se pudo eliminar", 3) end
+end)
+ConfigGroup:AddButton("Refresh Config List", function()
+    local list = SaveManager:GetConfigList() or {}
+    if #list == 0 then Library:Notify("No hay configs guardadas", 3) else Library:Notify("Configs:\n" .. table.concat(list, "\n"), 6) end
+end)
+ConfigGroup:AddToggle("AutoLoadConfig", {Text = "Auto Load Config on Join", Default = true})
+ConfigGroup:AddInput("AutoLoadName", {Default = "default", Numeric = false, Finished = false, Text = "AutoLoad Config Name", Placeholder = "default"})
+
+local ExportGroup = Tabs["UI Settings"]:AddLeftGroupbox("Export / Import")
+ExportGroup:AddButton("Export Config to Clipboard", function()
+    local name = Options.ConfigName.Value
+    if not name or name == "" then Library:Notify("Pon un nombre primero", 3) return end
+    pcall(function()
+        SaveManager:Save(name)
+        local path = "ApocalypseHub/configs/" .. name .. ".json"
+        if isfile and isfile(path) then
+            setclipboard(readfile(path))
+            Library:Notify("Config exportada al clipboard", 4)
+        else
+            Library:Notify("No se pudo exportar", 4)
+        end
+    end)
+end)
+ExportGroup:AddButton("Import Config from Clipboard", function()
+    local name = Options.ConfigName.Value
+    if not name or name == "" then Library:Notify("Pon un nombre para importar", 3) return end
+    local clipboard = ""
+    pcall(function() clipboard = getclipboard() end)
+    if not clipboard or clipboard == "" then Library:Notify("Clipboard vacío", 3) return end
+    local success = pcall(function()
+        local path = "ApocalypseHub/configs/" .. name .. ".json"
+        writefile(path, clipboard)
+        SaveManager:Load(name)
+    end)
+    if success then Library:Notify("Config importada como \"" .. name .. "\"", 5) else Library:Notify("Error al importar", 4) end
+end)
+
+local AutoSaveGroup = Tabs["UI Settings"]:AddRightGroupbox("Auto Save")
+AutoSaveGroup:AddToggle("AutoSaveEnabled", {Text = "Auto Save every 30s", Default = false, Callback = function(v) getgenv().ApocalypseAutoSave = v end})
+AutoSaveGroup:AddInput("AutoSaveName", {Default = "autosave", Text = "Auto Save Config Name", Placeholder = "autosave"})
+
+task.spawn(function()
+    while task.wait(30) do
+        if getgenv().ApocalypseAutoSave then
+            local name = (Options.AutoSaveName and Options.AutoSaveName.Value) or "autosave"
+            pcall(function() SaveManager:Save(name) end)
+        end
+    end
+end)
+
+ThemeManager:ApplyToTab(Tabs["UI Settings"])
+SaveManager:BuildConfigSection(Tabs["UI Settings"])
+
+task.spawn(function()
+    task.wait(1.2)
+    local autoLoadEnabled = true
+    local autoLoadName = "default"
+    pcall(function()
+        if Options.AutoLoadConfig then autoLoadEnabled = Options.AutoLoadConfig.Value end
+        if Options.AutoLoadName then autoLoadName = Options.AutoLoadName.Value end
+    end)
+    if autoLoadEnabled and autoLoadName and autoLoadName ~= "" then
+        local success = pcall(function() SaveManager:Load(autoLoadName) end)
+        if success then Library:Notify("Config \"" .. autoLoadName .. "\" cargada automáticamente", 4)
+        else Library:Notify("No se encontró config de autoload", 3) end
+    end
+end)
+
+Library:Notify("https://discord.gg/VAS4MPjtN", 50000)
